@@ -9,7 +9,7 @@ def get_example():
                   [1,2],
                   [0,2]])
     c = np.array([5,5,10])
-    D = np.array([[0,2,3],
+    D = np.array([[0,2,11],
                   [0,0,1],
                   [0,0,0]])
     return V, E, c, D
@@ -20,7 +20,7 @@ def min_congestion(V, E, c, D, w=None):
     commodities = ['bytes']
 
     if not w:
-        # Uniform weights
+        # If weights aren't specified, make uniform
         w = np.ones(len(E))
 
     cap, cost, inflow = {}, {}, defaultdict(lambda:0, {})
@@ -33,10 +33,6 @@ def min_congestion(V, E, c, D, w=None):
             inflow[h, i]  +=  D[int(i), int(j)]
 
     arcs, capacity = gb.multidict(cap)
-    print(cost)
-    print(inflow)
-    print(arcs)
-    print(capacity)
 
     # Create variables
     flow = m.addVars(commodities, arcs, obj=cost, name="flow")
@@ -61,7 +57,7 @@ def min_congestion(V, E, c, D, w=None):
             print('\nOptimal flows for %s:' % h)
             for i,j in arcs:
                 if solution[h,i,j] > 0:
-                    print('%s -> %s: %g' % (i, j, solution[h,i,j]))
+                    print('%s -> %s: %g' % (i, j, solution[h,i,j]))
     return
 
 
