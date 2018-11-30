@@ -59,6 +59,7 @@ def min_congestion(V, E, c, D, w=None, hard_cap=True, verbose=False):
 
     if not w:
         # If weights aren't specified, make uniform
+        verboseprint('Using uniform link costs.')
         w = np.ones(len(E))
 
     cap, cost = {}, {}
@@ -77,6 +78,7 @@ def min_congestion(V, E, c, D, w=None, hard_cap=True, verbose=False):
 
     # Arc capacity constraints
     if hard_cap:
+        verboseprint('Capacity constraints set as hard constraints.')
         m.addConstrs((l[i, j] <= capacity[i,j]
                       for i, j in arcs), "traf_below_cap")
 
@@ -102,6 +104,8 @@ def min_congestion(V, E, c, D, w=None, hard_cap=True, verbose=False):
     if m.status == gb.GRB.Status.OPTIMAL:
         f_sol = m.getAttr('x', f)
         verboseprint('\nOptimal traffic flows.')
+        verboseprint('\nf_{i -> j}(s, t) denotes amount of traffic from source'
+                     ' s to destination t that goes through link (i, j) in E.')
         for s, t in cartesian_product(V, V):
             for i,j in arcs:
                 p = f_sol[s, t, i, j]
@@ -116,7 +120,7 @@ def min_congestion(V, E, c, D, w=None, hard_cap=True, verbose=False):
             if p > 0:
                 verboseprint('%s -> %s: %g bytes.' % (i, j, p))
         m_cong = float(max_cong.x)
-        verboseprint('\nMax. weighted utilization: ', format(m_cong, '.4f'))
+        verboseprint('\nMax. weighted link util: ', format(m_cong, '.4f'))
     else:
         verboseprint('\nERROR: Flow Optimization Failed!', file=sys.stderr)
         return None, None, None
@@ -126,4 +130,4 @@ def min_congestion(V, E, c, D, w=None, hard_cap=True, verbose=False):
 if __name__ == '__main__':
     V, E, c, D = get_example()
     print('Linear programming for multi-commodity flow optimization.')
-    f, l, u = min_congestion(V, E, c, D, verbose=True)
+    f, l, u = min_congestion(V, E, c, D, hard_cap=True, verbose=True)
