@@ -46,6 +46,8 @@ def min_congestion(V, E, c, D, w=None, hard_cap=True, verbose=False):
 
         hard_cap is a boolean flag indicating whether to make link capacity a
         hard optimization constraint or not.
+
+        verbose is a boolean flag enabling/disabling optimizer printing.
     '''
     m = gb.Model('netflow')
     verboseprint = print
