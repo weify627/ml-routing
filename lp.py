@@ -9,13 +9,31 @@ def get_example():
                   [1,2],
                   [0,2]])
     c = np.array([5,5,10])
-    D = np.array([[0,0,13],
+    D = np.array([[0,0,4],
                   [0,0,2],
                   [0,0,0]])
     return V, E, c, D
 
 
 def min_congestion(V, E, c, D, w=None):
+    '''
+    Compute the multi-commodity flow which minimizes maximum link
+    utilization, through linear programming.
+    Arguments:
+        V is an array of graph vertex names, ie V = [0, 1, 2]
+
+        E is an array of directed edges, where each component of E is
+        a an array [i, j] representing an edge V[i] to V[j].
+
+        c is an array of size |E| of maximum capacity for each edge.
+
+        D is a demand matrix, where D(i, j) represents the traffic demand
+        in bytes from V[i] to V[j]
+
+        w is an array of size |E| indicating desired edge weights (lengths)
+        to be used for optimiization. If not specified, uniform weighting is
+        used.
+    '''
     m = gb.Model('netflow')
     commodities = ['bytes']
 
@@ -29,8 +47,8 @@ def min_congestion(V, E, c, D, w=None):
             i, j = str(e[0]), str(e[1])
             cap[i, j]      =  c[k]
             cost[h, i, j]  =  w[k]
-            inflow[h, j]  -=  D[int(i), int(j)]
             inflow[h, i]  +=  D[int(i), int(j)]
+            inflow[h, j]  -=  D[int(i), int(j)]
 
     arcs, capacity = gb.multidict(cap)
 
@@ -47,11 +65,13 @@ def min_congestion(V, E, c, D, w=None):
 	(flow.sum(h,'*',j) + inflow[h,j] == flow.sum(h,j,'*')
 	for h in commodities for j in V), "node")
 
-    max_cong = m.addVar(lb=0.0, obj=1.0, name='max_congestion')
-    m.addConstrs((flow[h, i, j] <= max_cong
+    # Set objective to max-link utilization (congestion)
+    max_cong = m.addVar(lb=0.0, obj=1.0, name='congestion')
+    m.addConstrs((flow[h, i, j]/capacity[i,j] <= max_cong
                   for h in commodities
                   for i, j in arcs))
     m.setObjective(max_cong, gb.GRB.MINIMIZE)
+
     # Compute optimal solution
     m.optimize()
 
