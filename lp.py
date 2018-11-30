@@ -1,3 +1,4 @@
+import sys
 import numpy as np
 import gurobipy as gb
 from collections import defaultdict
@@ -18,8 +19,8 @@ def get_example():
                   [1,2],
                   [0,2]])
     c = np.array([5,5,10])
-    D = np.array([[0,2,7],
-                  [0,0,1],
+    D = np.array([[0,4,11],
+                  [0,0,4],
                   [0,0,0]])
     return V, E, c, D
 
@@ -112,7 +113,7 @@ def min_congestion(V, E, c, D, w=None, hard_cap=True):
         print('\nMax. weighted utilization: ', format(m_cong, '.4f'))
     else:
         print('\nERROR: Flow Optimization Failed!', file=sys.stderr)
-        return
+        return None, None, None
     return f_sol, l_sol, m_cong
 
 
