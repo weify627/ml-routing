@@ -15,7 +15,7 @@ def get_example():
     return V, E, c, D
 
 
-def min_congestion(V, E, c, D, w=None):
+def min_congestion(V, E, c, D, w=None, hard_cap=True):
     '''
     Compute the multi-commodity flow which minimizes maximum link
     utilization, through linear programming.
@@ -33,42 +33,59 @@ def min_congestion(V, E, c, D, w=None):
         w is an array of size |E| indicating desired edge weights (lengths)
         to be used for optimiization. If not specified, uniform weighting is
         used.
+
+        hard_cap is a boolean flag indicating whether to make link capacity a
+        hard optimization constraint or not.
     '''
     m = gb.Model('netflow')
-    commodities = ['bytes']
+
+    # Make string array for hashing
+    V = [str(i) for i in V]
 
     if not w:
         # If weights aren't specified, make uniform
         w = np.ones(len(E))
 
-    cap, cost, inflow = {}, {}, defaultdict(lambda:0, {})
-    for h in commodities:
-        for k, e in enumerate(E):
-            i, j = str(e[0]), str(e[1])
-            cap[i, j]      =  c[k]
-            cost[h, i, j]  =  w[k]
-            inflow[h, i]  +=  D[int(i), int(j)]
-            inflow[h, j]  -=  D[int(i), int(j)]
+    cap, cost = {}, {}
+    for k, e in enumerate(E):
+        i, j = str(e[0]), str(e[1])
+        cap[i, j]  =  c[k]
+        cost[i, j] =  w[k]
 
     arcs, capacity = gb.multidict(cap)
 
     # Create variables
-    flow = m.addVars(commodities, arcs, obj=cost, name="flow")
+    f = m.addVars(V, V, arcs, obj=cost, name='flow')
+    l = m.addVars(arcs, lb=0.0, name='link util')
+    m.addConstrs((l[i, j] == f.sum('*', '*', i, j)
+                  for i, j in arcs), 'link util is sum traffic')
 
     # Arc capacity constraints
-    m.addConstrs(
-	(flow.sum('*',i,j) <= capacity[i,j] for i,j in arcs), "cap")
+    if hard_cap:
+        m.addConstrs((l[i, j] <= capacity[i,j]
+                      for i, j in arcs), "util capacity")
 
     # Flow conservation constraints
-    V = [str(i) for i in V]
-    m.addConstrs(
-	(flow.sum(h,'*',j) + inflow[h,j] == flow.sum(h,j,'*')
-	for h in commodities for j in V), "node")
+    for s in V:
+        for t in V:
+            for u in V:
+                d = D[int(s), int(t)]
+                if (u==s):
+                    m.addConstr((f.sum(s, t, u, '*') -
+                                 f.sum(s, t, '*', u) ==
+                                 d), 'conserv')
+                elif (u==t):
+                    m.addConstr(f.sum(s, t, u, '*') -
+                                 f.sum(s, t, '*', u) ==
+                                 -d, 'conserv')
+                else:
+                    m.addConstr(f.sum(s, t, u, '*') -
+                                 f.sum(s, t, '*', u) ==
+                                 0, 'conserv')
 
     # Set objective to max-link utilization (congestion)
-    max_cong = m.addVar(lb=0.0, obj=1.0, name='congestion')
-    m.addConstrs((flow[h, i, j]/capacity[i,j] <= max_cong
-                  for h in commodities
+    max_cong = m.addVar(name='congestion')
+    m.addConstrs((l[i, j]/capacity[i,j] <= max_cong
                   for i, j in arcs))
     m.setObjective(max_cong, gb.GRB.MINIMIZE)
 
@@ -77,12 +94,11 @@ def min_congestion(V, E, c, D, w=None):
 
     # Print solution
     if m.status == gb.GRB.Status.OPTIMAL:
-        solution = m.getAttr('x', flow)
-        for h in commodities:
-            print('\nOptimal flows for %s:' % h)
-            for i,j in arcs:
-                if solution[h,i,j] > 0:
-                    print('%s -> %s: %g' % (i, j, solution[h,i,j]))
+        solution = m.getAttr('x', l)
+        print('\nOptimal flows for %s:' % 'bytes')
+        for i,j in arcs:
+            if solution[i,j] > 0:
+                print('%s -> %s: %g' % (i, j, solution[i,j]))
     return
 
 
