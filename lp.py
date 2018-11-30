@@ -18,8 +18,8 @@ def get_example():
                   [1,2],
                   [0,2]])
     c = np.array([5,5,10])
-    D = np.array([[0,0,4],
-                  [0,0,2],
+    D = np.array([[0,2,7],
+                  [0,0,1],
                   [0,0,0]])
     return V, E, c, D
 
@@ -86,8 +86,7 @@ def min_congestion(V, E, c, D, w=None, hard_cap=True):
 
     # Set objective to max-link utilization (congestion)
     max_cong = m.addVar(name='congestion')
-    m.addConstrs(((cost[i,j]*l[i, j])/capacity[i,j]<=max_cong
-                  for i, j in arcs))
+    m.addConstrs(((cost[i,j]*l[i, j])/capacity[i,j]<=max_cong for i, j in arcs))
     m.setObjective(max_cong, gb.GRB.MINIMIZE)
 
     # Compute optimal solution
@@ -95,24 +94,29 @@ def min_congestion(V, E, c, D, w=None, hard_cap=True):
 
     # Print solution
     if m.status == gb.GRB.Status.OPTIMAL:
-        sol = m.getAttr('x', f)
+        f_sol = m.getAttr('x', f)
         print('\nOptimal traffic flows.')
         for s, t in cartesian_product(V, V):
             for i,j in arcs:
-                p = sol[s, t, i, j]
+                p = f_sol[s, t, i, j]
                 if p > 0:
                     print('f_{%s -> %s}(%s, %s): %g bytes.' % (i, j, s, t, p))
 
-        sol = m.getAttr('x', l)
+        l_sol = m.getAttr('x', l)
         print('\nTotal traffic per link.')
         for i, j in arcs:
-            p = sol[i, j]
+            p = l_sol[i, j]
             if p > 0:
                 print('%s -> %s: %g bytes.' % (i, j, p))
-    return
+        m_cong = float(max_cong.x)
+        print('\nMax. weighted utilization: ', format(m_cong, '.4f'))
+    else:
+        print('\nERROR: Flow Optimization Failed!', file=sys.stderr)
+        return
+    return f_sol, l_sol, m_cong
 
 
 if __name__ == '__main__':
     V, E, c, D = get_example()
-    print('Linear programming for multi-commodity flow optimization')
-    min_congestion(V, E, c, D)
+    print('Linear programming for multi-commodity flow optimization.')
+    f, l, u = min_congestion(V, E, c, D)
