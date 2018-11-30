@@ -3,6 +3,15 @@ import gurobipy as gb
 from collections import defaultdict
 
 
+def cartesian_product(*arrays):
+    la = len(arrays)
+    dtype = np.result_type(*arrays)
+    arr = np.empty([len(a) for a in arrays] + [la], dtype=dtype)
+    for i, a in enumerate(np.ix_(*arrays)):
+        arr[...,i] = a
+    return arr.reshape(-1, la)
+
+
 def get_example():
     V = np.array([0,1,2])
     E = np.array([[0,1],
@@ -40,7 +49,7 @@ def min_congestion(V, E, c, D, w=None, hard_cap=True):
     m = gb.Model('netflow')
 
     # Make string array for hashing
-    V = [str(i) for i in V]
+    V = np.array([str(i) for i in V])
 
     if not w:
         # If weights aren't specified, make uniform
@@ -56,36 +65,28 @@ def min_congestion(V, E, c, D, w=None, hard_cap=True):
 
     # Create variables
     f = m.addVars(V, V, arcs, obj=cost, name='flow')
-    l = m.addVars(arcs, lb=0.0, name='link util')
+    l = m.addVars(arcs, lb=0.0, name='tot_traf_across_link')
     m.addConstrs((l[i, j] == f.sum('*', '*', i, j)
-                  for i, j in arcs), 'link util is sum traffic')
+                  for i, j in arcs), 'l_sum_traf')
 
     # Arc capacity constraints
     if hard_cap:
         m.addConstrs((l[i, j] <= capacity[i,j]
-                      for i, j in arcs), "util capacity")
+                      for i, j in arcs), "traf_below_cap")
 
     # Flow conservation constraints
-    for s in V:
-        for t in V:
-            for u in V:
-                d = D[int(s), int(t)]
-                if (u==s):
-                    m.addConstr((f.sum(s, t, u, '*') -
-                                 f.sum(s, t, '*', u) ==
-                                 d), 'conserv')
-                elif (u==t):
-                    m.addConstr(f.sum(s, t, u, '*') -
-                                 f.sum(s, t, '*', u) ==
-                                 -d, 'conserv')
-                else:
-                    m.addConstr(f.sum(s, t, u, '*') -
-                                 f.sum(s, t, '*', u) ==
-                                 0, 'conserv')
+    for s, t, u in cartesian_product(V, V, V):
+        d = D[int(s), int(t)]
+        if u==s:
+            m.addConstr(f.sum(s, t, u, '*')-f.sum(s, t, '*', u)==d, 'conserv')
+        elif u==t:
+            m.addConstr(f.sum(s, t, u, '*')-f.sum(s, t, '*', u)==-d, 'conserv')
+        else:
+            m.addConstr(f.sum(s, t, u, '*')-f.sum(s, t, '*', u)==0, 'conserv')
 
     # Set objective to max-link utilization (congestion)
     max_cong = m.addVar(name='congestion')
-    m.addConstrs((l[i, j]/capacity[i,j] <= max_cong
+    m.addConstrs(((cost[i,j]*l[i, j])/capacity[i,j]<=max_cong
                   for i, j in arcs))
     m.setObjective(max_cong, gb.GRB.MINIMIZE)
 
@@ -94,11 +95,20 @@ def min_congestion(V, E, c, D, w=None, hard_cap=True):
 
     # Print solution
     if m.status == gb.GRB.Status.OPTIMAL:
-        solution = m.getAttr('x', l)
-        print('\nOptimal flows for %s:' % 'bytes')
-        for i,j in arcs:
-            if solution[i,j] > 0:
-                print('%s -> %s: %g' % (i, j, solution[i,j]))
+        sol = m.getAttr('x', f)
+        print('\nOptimal traffic flows.')
+        for s, t in cartesian_product(V, V):
+            for i,j in arcs:
+                p = sol[s, t, i, j]
+                if p > 0:
+                    print('f_{%s -> %s}(%s, %s): %g bytes.' % (i, j, s, t, p))
+
+        sol = m.getAttr('x', l)
+        print('\nTotal traffic per link.')
+        for i, j in arcs:
+            p = sol[i, j]
+            if p > 0:
+                print('%s -> %s: %g bytes.' % (i, j, p))
     return
 
 
