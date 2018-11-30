@@ -25,7 +25,7 @@ def get_example():
     return V, E, c, D
 
 
-def min_congestion(V, E, c, D, w=None, hard_cap=True):
+def min_congestion(V, E, c, D, w=None, hard_cap=True, verbose=False):
     '''
     Compute the multi-commodity flow which minimizes maximum link
     utilization, through linear programming.
@@ -48,6 +48,11 @@ def min_congestion(V, E, c, D, w=None, hard_cap=True):
         hard optimization constraint or not.
     '''
     m = gb.Model('netflow')
+    verboseprint = print
+    if not verbose:
+        verboseprint = lambda *a: None
+        m.setParam('OutputFlag', False )
+        m.setParam('LogToConsole', False )
 
     # Make string array for hashing
     V = np.array([str(i) for i in V])
@@ -96,23 +101,24 @@ def min_congestion(V, E, c, D, w=None, hard_cap=True):
     # Print solution
     if m.status == gb.GRB.Status.OPTIMAL:
         f_sol = m.getAttr('x', f)
-        print('\nOptimal traffic flows.')
+        verboseprint('\nOptimal traffic flows.')
         for s, t in cartesian_product(V, V):
             for i,j in arcs:
                 p = f_sol[s, t, i, j]
                 if p > 0:
-                    print('f_{%s -> %s}(%s, %s): %g bytes.' % (i, j, s, t, p))
+                    verboseprint('f_{%s -> %s}(%s, %s): %g bytes.'
+                                  % (i, j, s, t, p))
 
         l_sol = m.getAttr('x', l)
-        print('\nTotal traffic per link.')
+        verboseprint('\nTotal traffic per link.')
         for i, j in arcs:
             p = l_sol[i, j]
             if p > 0:
-                print('%s -> %s: %g bytes.' % (i, j, p))
+                verboseprint('%s -> %s: %g bytes.' % (i, j, p))
         m_cong = float(max_cong.x)
-        print('\nMax. weighted utilization: ', format(m_cong, '.4f'))
+        verboseprint('\nMax. weighted utilization: ', format(m_cong, '.4f'))
     else:
-        print('\nERROR: Flow Optimization Failed!', file=sys.stderr)
+        verboseprint('\nERROR: Flow Optimization Failed!', file=sys.stderr)
         return None, None, None
     return f_sol, l_sol, m_cong
 
@@ -120,4 +126,4 @@ def min_congestion(V, E, c, D, w=None, hard_cap=True):
 if __name__ == '__main__':
     V, E, c, D = get_example()
     print('Linear programming for multi-commodity flow optimization.')
-    f, l, u = min_congestion(V, E, c, D)
+    f, l, u = min_congestion(V, E, c, D, verbose=True)
