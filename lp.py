@@ -9,8 +9,8 @@ def get_example():
                   [1,2],
                   [0,2]])
     c = np.array([5,5,10])
-    D = np.array([[0,2,11],
-                  [0,0,1],
+    D = np.array([[0,0,13],
+                  [0,0,2],
                   [0,0,0]])
     return V, E, c, D
 
@@ -47,6 +47,11 @@ def min_congestion(V, E, c, D, w=None):
 	(flow.sum(h,'*',j) + inflow[h,j] == flow.sum(h,j,'*')
 	for h in commodities for j in V), "node")
 
+    max_cong = m.addVar(lb=0.0, obj=1.0, name='max_congestion')
+    m.addConstrs((flow[h, i, j] <= max_cong
+                  for h in commodities
+                  for i, j in arcs))
+    m.setObjective(max_cong, gb.GRB.MINIMIZE)
     # Compute optimal solution
     m.optimize()
 
