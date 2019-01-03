@@ -3,8 +3,9 @@
 # platform: linux-64
 blas=1.0=mkl
 ca-certificates=2018.03.07=0
-certifi=2018.10.15=py37_0
+certifi=2018.11.29=py37_0
 cffi=1.11.5=py37he75722e_1
+decorator=4.3.0=py37_0
 freetype=2.9.1=h8a8886c_1
 gurobi=8.1.0=py37_0
 intel-openmp=2019.1=144
@@ -20,6 +21,7 @@ mkl=2018.0.3=1
 mkl_fft=1.0.6=py37h7dd41cf_0
 mkl_random=1.0.1=py37h4414c95_1
 ncurses=6.1=he6710b0_1
+networkx=2.2=py37_1
 ninja=1.8.2=py37h6bb024c_1
 numpy=1.15.4=py37h1d66e8a_0
 numpy-base=1.15.4=py37h81de0dd_0
