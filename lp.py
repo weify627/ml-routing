@@ -19,8 +19,8 @@ def get_example():
                   [1,2],
                   [0,2]])
     c = np.array([5,5,10])
-    D = np.array([[0,4,11],
-                  [0,0,4],
+    D = np.array([[0,2,7],
+                  [0,0,2],
                   [0,0,0]])
     return V, E, c, D
 
