@@ -1,4 +1,6 @@
+import numpy as np
 import networkx as nx
+from matplotlib import pyplot as plt
 
 
 def create_example():
@@ -13,6 +15,35 @@ def create_example():
     return G, D
 
 
+def draw_graph(G):
+    elarge = [(u, v) for (u, v, d) in G.edges(data=True) if d['weight'] > 0.5]
+    esmall = [(u, v) for (u, v, d) in G.edges(data=True) if d['weight'] <= 0.5]
+
+    pos = nx.spring_layout(G)
+
+    nx.draw_networkx_nodes(G, pos, node_size=700)
+
+    nx.draw_networkx_edges(G, pos, edgelist=elarge, width=6)
+    nx.draw_networkx_edges(G,
+                           pos,
+                           edgelist=esmall,
+                           width=6,
+                           alpha=0.5,
+                           edge_color='b',
+                           style='dashed'
+                           )
+
+    # labels
+    nx.draw_networkx_labels(G, pos, font_size=20, font_family='sans-serif')
+
+    labels = nx.get_edge_attributes(G, 'weight')
+    nx.draw_networkx_edge_labels(G, pos, edge_labels=labels, font_size=20)
+
+    plt.axis('off')
+    plt.show()
+    return
+
+
 def softmin_routing(G, D):
     '''
     Return a routing policy given a directed graph with weighted edges and a
@@ -21,10 +52,11 @@ def softmin_routing(G, D):
         G is a networkx graph with nodes and edges with weights.
         D is a demand matrix, represented as a 2D numpy array.
     '''
-
+    print(D)
+    draw_graph(G)
     return
 
 
 if __name__ == '__main__':
-    G, D = create_example_graph()
+    G, D = create_example()
     softmin_routing(G, D)
