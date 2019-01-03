@@ -50,7 +50,9 @@ def min_congestion(V, E, c, D, w=None, hard_cap=True, verbose=False):
         verbose is a boolean flag enabling/disabling optimizer printing.
     '''
     m = gb.Model('netflow')
+
     verboseprint = print
+
     if not verbose:
         verboseprint = lambda *a: None
         m.setParam('OutputFlag', False )
@@ -75,14 +77,18 @@ def min_congestion(V, E, c, D, w=None, hard_cap=True, verbose=False):
     # Create variables
     f = m.addVars(V, V, arcs, obj=cost, name='flow')
     l = m.addVars(arcs, lb=0.0, name='tot_traf_across_link')
-    m.addConstrs((l[i, j] == f.sum('*', '*', i, j)
-                  for i, j in arcs), 'l_sum_traf')
+    m.addConstrs(
+            (l[i, j] == f.sum('*', '*', i, j) for i, j in arcs),
+            'l_sum_traf',
+            )
 
     # Arc capacity constraints
     if hard_cap:
         verboseprint('Capacity constraints set as hard constraints.')
-        m.addConstrs((l[i, j] <= capacity[i,j]
-                      for i, j in arcs), "traf_below_cap")
+        m.addConstrs(
+            (l[i, j] <= capacity[i,j] for i, j in arcs),
+            'traf_below_cap',
+            )
 
     # Flow conservation constraints
     for s, t, u in cartesian_product(V, V, V):
