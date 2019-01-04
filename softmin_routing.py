@@ -1,95 +1,7 @@
-import sys
 import numpy as np
-from collections import defaultdict
-from matplotlib import pyplot as plt
-
-import networkx as nx
 import gurobipy as gb
 
-import lp
-
-
-def create_example():
-    G = nx.DiGraph()
-    G.add_nodes_from([0, 1, 2])
-    G.add_edges_from([(0, 1), (1, 2), (0, 2)])
-
-    G[0][1]['weight'] = 2
-    G[1][2]['weight'] = 4
-    G[0][2]['weight'] = 7
-
-    G[0][1]['capacity'] = 5
-    G[1][2]['capacity'] = 5
-    G[0][2]['capacity'] = 10
-
-    G[0][1]['cost'] = 1
-    G[1][2]['cost'] = 1
-    G[0][2]['cost'] = 1
-
-    D = np.array([[0,2,7],
-                  [0,0,3],
-                  [0,0,0]])
-
-    return G, D
-
-
-def draw_graph(G):
-    elarge = [(u, v) for (u, v, d) in G.edges(data=True) if d['weight'] > 0.5]
-    esmall = [(u, v) for (u, v, d) in G.edges(data=True) if d['weight'] <= 0.5]
-
-    pos = nx.spring_layout(G)
-
-    nx.draw_networkx_nodes(G, pos, node_size=700)
-
-    nx.draw_networkx_edges(G, pos, edgelist=elarge, width=6)
-    nx.draw_networkx_edges(G,
-                           pos,
-                           edgelist=esmall,
-                           width=3,
-                           alpha=0.5,
-                           edge_color='b',
-                           style='dashed'
-                           )
-
-    # labels
-    nx.draw_networkx_labels(G, pos, font_size=20, font_family='sans-serif')
-
-    labels = nx.get_edge_attributes(G, 'weight')
-    nx.draw_networkx_edge_labels(G, pos, edge_labels=labels, font_size=20)
-
-    plt.axis('off')
-    plt.show()
-    return
-
-
-def split_ratio(G, s, u, t, gamma, sps):
-    sp3 = lambda a, b, c: G[a][b]['weight'] + sps[b][c]
-    num = np.exp(-gamma * sp3(s, u, t))
-
-    denom = 0.0
-    for v in G.neighbors(s):
-        denom += np.exp(-gamma * sp3(s, v, t))
-
-    if (denom == 0):
-        return 0.
-
-    return num / denom
-
-
-def get_shortest_paths(G):
-    '''TODO: This needs to be made differentiable for PyTorch's automatic
-    gradient. The way to do this is to replace shortest_path_length with
-    a computation of the shortest path, and to compute the shortest path length
-    manually by adding the edge weights along the shortest path.'''
-    nV = G.number_of_nodes()
-    sps = np.full((nV, nV), fill_value=np.inf)
-
-    for i in range(nV):
-        for j in range(nV):
-            if nx.has_path(G, i, j):
-                sps[i][j] = nx.shortest_path_length(G, i, j, weight='weight')
-
-    return sps
+import utils
 
 
 def softmin_routing(G, D, gamma=2, hard_cap=False, verbose=False):
@@ -135,7 +47,7 @@ def softmin_routing(G, D, gamma=2, hard_cap=False, verbose=False):
     nV = G.number_of_nodes()
     nE = G.number_of_edges()
 
-    sps = get_shortest_paths(G)
+    sps = utils.get_shortest_paths(G)
 
     m = gb.Model('netflow')
 
@@ -183,9 +95,9 @@ def softmin_routing(G, D, gamma=2, hard_cap=False, verbose=False):
 
     # Total commodity at node is sum of incoming commodities times split
     # ratios plus the source demand.
-    for s, t in lp.cartesian_product(V, V):
+    for s, t in utils.cartesian_product(V, V):
         qs = gb.quicksum(
-                g[u, t]*split_ratio(G, u, v, t, gamma, sps)
+                g[u, t] * utils.split_ratio(G, u, v, t, gamma, sps)
                 for (u, v) in G.in_edges(s)
         )
         m.addConstr(
@@ -194,11 +106,11 @@ def softmin_routing(G, D, gamma=2, hard_cap=False, verbose=False):
         )
 
     # Total commodity is sum of incoming flows plus outgoing source.
-    for s, t in lp.cartesian_product(V, V):
+    for s, t in utils.cartesian_product(V, V):
         m.addConstr(g[s, t] == (f.sum('*', t, '*', s) + D[s, t]))
 
     # Flow conservation constraints.
-    for s, t, u in lp.cartesian_product(V, V, V):
+    for s, t, u in utils.cartesian_product(V, V, V):
         d = D[int(s), int(t)]
         if u==s:
             m.addConstr(f.sum(s, t, u, '*')-f.sum(s, t, '*', u)==d, 'conserv')
@@ -225,7 +137,7 @@ def softmin_routing(G, D, gamma=2, hard_cap=False, verbose=False):
         verboseprint('f_{i -> j}(s, t) denotes amount of traffic from source'
                      ' s to destination t that goes through link (i, j) in E.')
 
-        for s, t in lp.cartesian_product(V, V):
+        for s, t in utils.cartesian_product(V, V):
             for i,j in arcs:
                 p = f_sol[s, t, i, j]
                 if p > 0:
@@ -237,7 +149,7 @@ def softmin_routing(G, D, gamma=2, hard_cap=False, verbose=False):
                      ' node j that passes through node i.'
         )
 
-        for s, t in lp.cartesian_product(V, V):
+        for s, t in utils.cartesian_product(V, V):
             p = g_sol[s, t]
             if p > 0:
                 verboseprint('g({}, {}): {} bytes.'.format(s, t, p))
@@ -265,6 +177,6 @@ def softmin_routing(G, D, gamma=2, hard_cap=False, verbose=False):
 
 if __name__ == '__main__':
     GAMMA = 2
-    G, D = create_example()
+    G, D = utils.create_example()
     softmin_routing(G, D, GAMMA, verbose=True)
 
