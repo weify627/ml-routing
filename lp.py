@@ -48,6 +48,13 @@ def min_congestion(V, E, c, D, w=None, hard_cap=True, verbose=False):
         hard optimization constraint or not.
 
         verbose is a boolean flag enabling/disabling optimizer printing.
+
+    return values:
+        f_sol is the flow or routing policy that yields the optimal congestion.
+
+        l_sol is the link utilization per link.
+
+        m_cong is the maximum congestion optimal value.
     '''
     m = gb.Model('netflow')
 

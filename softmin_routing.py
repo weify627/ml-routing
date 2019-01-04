@@ -50,7 +50,13 @@ def softmin_routing(G, D):
     deman matrix.
     args:
         G is a networkx graph with nodes and edges with weights.
+
         D is a demand matrix, represented as a 2D numpy array.
+
+    return vals:
+        F is the V x V x E routing policy that yields for each
+        source-destination pair, the amount of traffic that flows through edge
+        e.
     '''
     print(D)
     draw_graph(G)
