@@ -1,9 +1,7 @@
-import sys
 import numpy as np
 import gurobipy as gb
-from collections import defaultdict
 
-import softmin_routing
+import utils
 
 
 def min_congestion(G, D, hard_cap=False, verbose=False):
@@ -84,7 +82,7 @@ def min_congestion(G, D, hard_cap=False, verbose=False):
             )
 
     # Flow conservation constraints
-    for s, t, u in cartesian_product(V, V, V):
+    for s, t, u in utils.cartesian_product(V, V, V):
         d = D[int(s), int(t)]
         if u==s:
             m.addConstr(f.sum(s, t, u, '*')-f.sum(s, t, '*', u)==d, 'conserv')
@@ -111,7 +109,7 @@ def min_congestion(G, D, hard_cap=False, verbose=False):
         verboseprint('f_{i -> j}(s, t) denotes amount of traffic from source'
                      ' s to destination t that goes through link (i, j) in E.')
 
-        for s, t in cartesian_product(V, V):
+        for s, t in utils.cartesian_product(V, V):
             for i,j in arcs:
                 p = f_sol[s, t, i, j]
                 if p > 0:
@@ -140,6 +138,6 @@ def min_congestion(G, D, hard_cap=False, verbose=False):
 
 
 if __name__ == '__main__':
-    G, D = softmin_routing.create_example()
+    G, D = utils.create_example()
     print('Linear programming for multi-commodity flow optimization.')
     f, l, m = min_congestion(G, D, hard_cap=True, verbose=True)
