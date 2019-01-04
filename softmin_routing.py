@@ -9,17 +9,18 @@ import gurobipy as gb
 import lp
 
 
-
 def create_example():
     G = nx.DiGraph()
     G.add_nodes_from([0, 1, 2])
     G.add_weighted_edges_from([(0, 1, 2), (1, 2, 4), (0, 2, 7)])
 
-    D = np.array([[0,2,3],
-                  [0,0,2],
+    D = np.array([[0,2,7],
+                  [0,0,3],
                   [0,0,0]])
 
-    return G, D
+    c = np.array([5, 5, 10])
+
+    return G, D, c
 
 
 def draw_graph(G):
@@ -77,7 +78,7 @@ def get_shortest_paths(G):
     return sps
 
 
-def softmin_routing(G, D, gamma=2, verbose=False):
+def softmin_routing(G, D, c, w=None, gamma=2, verbose=False):
     '''
     Return a routing policy given a directed graph with weighted edges and a
     deman matrix.
@@ -108,14 +109,33 @@ def softmin_routing(G, D, gamma=2, verbose=False):
         m.setParam('OutputFlag', False )
         m.setParam('LogToConsole', False )
 
-    # Make string array for hashing
     V = np.array([i for i in G.nodes()])
-    arcs = gb.tuplelist(G.edges())
+
+    if not w:
+        # If weights aren't specified, make uniform
+        verboseprint('Using uniform link costs.')
+        w = np.ones(G.number_of_edges())
+
+    cap, cost = {}, {}
+    for k, e in enumerate(G.edges()):
+        cap[e]  =  c[k]
+        cost[e] =  w[k]
+
+    arcs, capacity = gb.multidict(cap)
 
     # Create variables
     f = m.addVars(V, V, arcs, lb=0.0, name='flow')
     g = m.addVars(V, V, lb=0.0, name='traf_at_node')
+    l = m.addVars(arcs, lb=0.0, name='tot_traf_across_link')
 
+    # Link utilization is sum of flows
+    m.addConstrs(
+            (l[i, j] == f.sum('*', '*', i, j) for i, j in arcs),
+            'l_sum_traf',
+            )
+
+    # Total commodity at node is sum of incoming commodities times split
+    # ratios plus the source demand
     for s, t in lp.cartesian_product(V, V):
         qs = gb.quicksum(
                 g[u, t]*split_ratio(G, u, v, t, gamma, sps)
@@ -126,6 +146,7 @@ def softmin_routing(G, D, gamma=2, verbose=False):
             'split_ratio_{}_{}'.format(s, t)
         )
 
+    # Total commodity is sum of incoming flows plus outgoing source
     for s, t in lp.cartesian_product(V, V):
         m.addConstr(g[s, t] == (f.sum('*', t, '*', s) + D[s, t]))
 
@@ -139,40 +160,61 @@ def softmin_routing(G, D, gamma=2, verbose=False):
         else:
             m.addConstr(f.sum(s, t, u, '*')-f.sum(s, t, '*', u)==0, 'conserv')
 
-    # Set objective to max-link utilization (congestion)
-    #max_cong = m.addVar(name='congestion')
-    # m.addConstrs(((cost[i,j]*l[i, j])/capacity[i,j]<=max_cong for i, j in arcs))
+    # Compute max-link utilization (congestion)
+    max_cong = m.addVar(name='congestion')
+    m.addConstrs(((cost[i,j]*l[i, j])/capacity[i,j]<=max_cong for i, j in arcs))
 
     # Compute optimal solution
     m.optimize()
 
     # Print solution
     if m.status == gb.GRB.Status.OPTIMAL:
+        l_sol = m.getAttr('x', l)
+        g_sol = m.getAttr('x', g)
         f_sol = m.getAttr('x', f)
+        m_cong = float(max_cong.x)
+
         verboseprint('\nOptimal traffic flows.')
-        verboseprint('\nf_{i -> j}(s, t) denotes amount of traffic from source'
+        verboseprint('f_{i -> j}(s, t) denotes amount of traffic from source'
                      ' s to destination t that goes through link (i, j) in E.')
+
         for s, t in lp.cartesian_product(V, V):
             for i,j in arcs:
                 p = f_sol[s, t, i, j]
-                if p >= 0:
+                if p > 0:
                     verboseprint('f_{%s -> %s}(%s, %s): %g bytes.'
                                   % (i, j, s, t, p))
 
-        g_sol = m.getAttr('x', g)
         verboseprint('\nTotal traffic at node.')
+        verboseprint('g(i, j) denotes the total amount of traffic destined for'
+                     ' node j that passes through node i.'
+        )
+
         for s, t in lp.cartesian_product(V, V):
             p = g_sol[s, t]
-            if p >= 0:
+            if p > 0:
                 verboseprint('g({}, {}): {} bytes.'.format(s, t, p))
-        #m_cong = float(max_cong.x)
-        #verboseprint('\nMax. weighted link util: ', format(m_cong, '.4f'))
+
+        verboseprint('\nTotal traffic through link.')
+        verboseprint('l(i, j) denotes the total amount of traffic that passes'
+                     ' through edge (i, j).'
+        )
+
+        for i, j in arcs:
+            p = l_sol[i, j]
+            if p > 0:
+                verboseprint('l({}, {}): {} bytes.'.format(i, j, p))
+
+        verboseprint('\nMax. weighted link util: ', format(m_cong, '.4f'))
+
     else:
         verboseprint('\nERROR: Flow Optimization Failed!', file=sys.stderr)
         return None, None, None
-    return f_sol#, l_sol, m_cong
+
+    return f_sol, l_sol, m_cong
 
 
 if __name__ == '__main__':
-    G, D = create_example()
-    softmin_routing(G, D, gamma=2, verbose=True)
+    G, D, c = create_example()
+    softmin_routing(G, D, c, gamma=2, verbose=True)
+
