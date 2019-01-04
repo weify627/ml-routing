@@ -1,10 +1,11 @@
+import sys
 import numpy as np
 import networkx as nx
 from matplotlib import pyplot as plt
 
 
 def create_example():
-    G = nx.Graph()
+    G = nx.DiGraph()
     G.add_nodes_from([0, 1, 2])
     G.add_weighted_edges_from([(0, 1, 2), (1, 2, 4), (0, 2, 7)])
 
@@ -27,7 +28,7 @@ def draw_graph(G):
     nx.draw_networkx_edges(G,
                            pos,
                            edgelist=esmall,
-                           width=6,
+                           width=3,
                            alpha=0.5,
                            edge_color='b',
                            style='dashed'
@@ -44,22 +45,59 @@ def draw_graph(G):
     return
 
 
-def softmin_routing(G, D):
+def _
+
+    return
+
+
+def softmin_routing(G, D, gamma=2):
     '''
     Return a routing policy given a directed graph with weighted edges and a
     deman matrix.
     args:
         G is a networkx graph with nodes and edges with weights.
 
-        D is a demand matrix, represented as a 2D numpy array.
+        D is a V x V demand matrix, represented as a 2D numpy array.
+
+        gamma is a parameter for the softmin function (exponential scaling).
+        The larger the value for gamma, the closer the method is to shortest
+        path routing.
 
     return vals:
         F is the V x V x E routing policy that yields for each
         source-destination pair, the amount of traffic that flows through edge
         e.
     '''
-    print(D)
-    draw_graph(G)
+    nV = G.number_of_nodes()
+    nE = G.number_of_edges()
+    F = np.zeros((nV, nV, nV, nV))
+
+    for i in range(nV):
+        for j in range(nV):
+            if D[i, j]:
+                sp = []
+
+                for k, l in enumerate(G.neighbors(i)):
+                    w_il = G[i][l]['weight']
+
+                    if nx.has_path(G, l, j):
+                        splj = nx.shortest_path_length(G, l, j, weight='weight')
+                        sp.append((l, splj + w_il))
+                    else:
+                        sp.append((l, 'inf'))
+
+                denom = 0
+                denom = sum([np.exp(-gamma * t[1]) if (t[1]!='inf') else 0
+                             for t in sp]
+                             )
+
+                for tup in sp:
+                    e = (i, tup[0])
+                    w = np.exp(-gamma * tup[1])
+                    F[i][j][i][l] = w / denom
+
+    print(F)
+
     return
 
 
