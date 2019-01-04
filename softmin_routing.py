@@ -173,6 +173,14 @@ def softmin_routing(G, D, gamma=2, hard_cap=False, verbose=False):
             'l_sum_traf',
             )
 
+    # Arc capacity constraints
+    if hard_cap:
+        verboseprint('Capacity constraints set as hard constraints.')
+        m.addConstrs(
+            (l[i, j] <= capacity[i,j] for i, j in arcs),
+            'traf_below_cap',
+            )
+
     # Total commodity at node is sum of incoming commodities times split
     # ratios plus the source demand.
     for s, t in lp.cartesian_product(V, V):

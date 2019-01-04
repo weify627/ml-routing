@@ -44,6 +44,9 @@ def min_congestion(G, D, hard_cap=False, verbose=False):
         m_cong is the maximal congestion for any link weighted by cost. ie
         max_{(i, j) in E} cost[i, j] * l[i, j] / cap[i, j]
     '''
+    nV = G.number_of_nodes()
+    nE = G.number_of_edges()
+
     m = gb.Model('netflow')
 
     verboseprint = print
@@ -53,25 +56,28 @@ def min_congestion(G, D, hard_cap=False, verbose=False):
         m.setParam('OutputFlag', False )
         m.setParam('LogToConsole', False )
 
-    # Make string array for hashing
-    V = np.array([str(i) for i in V])
+    V = np.array([i for i in G.nodes()])
 
-    if not w:
-        # If weights aren't specified, make uniform
-        verboseprint('Using uniform link costs.')
-        w = np.ones(len(E))
+    cost = {}
+    for k, e in enumerate(G.edges()):
+        if 'cost' in G[e[0]][e[1]]:
+            cost[e] = G[e[0]][e[1]]['cost']
+        else:
+            # If costs aren't specified, make uniform.
+            cost[e] = 1.0
 
-    cap, cost = {}, {}
-    for k, e in enumerate(E):
-        i, j = str(e[0]), str(e[1])
-        cap[i, j]  =  c[k]
-        cost[i, j] =  w[k]
+    cap = {}
+    for k, e in enumerate(G.edges()):
+        cap[e]  =  G[e[0]][e[1]]['capacity']
 
     arcs, capacity = gb.multidict(cap)
 
     # Create variables
     f = m.addVars(V, V, arcs, obj=cost, name='flow')
     l = m.addVars(arcs, lb=0.0, name='tot_traf_across_link')
+
+
+    # Link utilization is sum of flows.
     m.addConstrs(
             (l[i, j] == f.sum('*', '*', i, j) for i, j in arcs),
             'l_sum_traf',
@@ -106,9 +112,13 @@ def min_congestion(G, D, hard_cap=False, verbose=False):
     # Print solution
     if m.status == gb.GRB.Status.OPTIMAL:
         f_sol = m.getAttr('x', f)
+        l_sol = m.getAttr('x', l)
+        m_cong = float(max_cong.x)
+
         verboseprint('\nOptimal traffic flows.')
-        verboseprint('\nf_{i -> j}(s, t) denotes amount of traffic from source'
+        verboseprint('f_{i -> j}(s, t) denotes amount of traffic from source'
                      ' s to destination t that goes through link (i, j) in E.')
+
         for s, t in cartesian_product(V, V):
             for i,j in arcs:
                 p = f_sol[s, t, i, j]
@@ -116,21 +126,28 @@ def min_congestion(G, D, hard_cap=False, verbose=False):
                     verboseprint('f_{%s -> %s}(%s, %s): %g bytes.'
                                   % (i, j, s, t, p))
 
-        l_sol = m.getAttr('x', l)
-        verboseprint('\nTotal traffic per link.')
+        verboseprint('\nTotal traffic through link.')
+        verboseprint('l(i, j) denotes the total amount of traffic that passes'
+                     ' through edge (i, j).'
+        )
+
         for i, j in arcs:
             p = l_sol[i, j]
             if p > 0:
                 verboseprint('%s -> %s: %g bytes.' % (i, j, p))
-        m_cong = float(max_cong.x)
-        verboseprint('\nMax. weighted link util: ', format(m_cong, '.4f'))
+
+        verboseprint('\nMaximum weighted link utilization (or congestion):',
+                     format(m_cong, '.4f')
+        )
+
     else:
         verboseprint('\nERROR: Flow Optimization Failed!', file=sys.stderr)
         return None, None, None
+
     return f_sol, l_sol, m_cong
 
 
 if __name__ == '__main__':
-    G, D = softmin_routing.create_exampled()
+    G, D = softmin_routing.create_example()
     print('Linear programming for multi-commodity flow optimization.')
     f, l, m = min_congestion(G, D, hard_cap=True, verbose=True)
