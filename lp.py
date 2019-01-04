@@ -3,6 +3,7 @@ import numpy as np
 import gurobipy as gb
 from collections import defaultdict
 
+import softmin_routing
 
 def cartesian_product(*arrays):
     la = len(arrays)
@@ -13,48 +14,35 @@ def cartesian_product(*arrays):
     return arr.reshape(-1, la)
 
 
-def get_example():
-    V = np.array([0,1,2])
-    E = np.array([[0,1],
-                  [1,2],
-                  [0,2]])
-    c = np.array([5,5,10])
-    D = np.array([[0,2,7],
-                  [0,0,2],
-                  [0,0,0]])
-    return V, E, c, D
-
-
-def min_congestion(V, E, c, D, w=None, hard_cap=True, verbose=False):
+def min_congestion(G, D, hard_cap=False, verbose=False):
     '''
     Compute the multi-commodity flow which minimizes maximum link
     utilization, through linear programming.
-    Arguments:
-        V is an array of graph vertex names, ie V = [0, 1, 2]
+    input parameters:
+        G is a networkx graph with nodes and edges. Edges must have a
+        'capacity'. Edge capacity denotes the maximum possible traffic
+        utilization for an edge. It can be set as a hard or soft optimization
+        constraint through the 'hard_cap' parameter. Edges may additionally
+        have a 'cost' attribute used for weighting the maximum link utilization.
 
-        E is an array of directed edges, where each component of E is
-        a an array [i, j] representing an edge V[i] to V[j].
+        D is a |V| x |V| demand matrix, represented as a 2D numpy array. |V|
+        here denotes the number of vertices in the graph G.
 
-        c is an array of size |E| of maximum capacity for each edge.
-
-        D is a demand matrix, where D(i, j) represents the traffic demand
-        in bytes from V[i] to V[j]
-
-        w is an array of size |E| indicating desired edge weights (lengths)
-        to be used for optimiization. If not specified, uniform weighting is
-        used.
-
-        hard_cap is a boolean flag indicating whether to make link capacity a
-        hard optimization constraint or not.
+        hard_cap is a boolean flag which determines whether edge capacities are
+        treated as hard or soft optimization constraints.
 
         verbose is a boolean flag enabling/disabling optimizer printing.
 
     return values:
-        f_sol is the flow or routing policy that yields the optimal congestion.
+        f_sol is a routing policy, represented as a numpy array of size
+        |V| x |V| x |E| such that f_sol[s, t, i, j] yields the amount of traffic
+        from source s to destination t that goes through edge (i, j).
 
-        l_sol is the link utilization per link.
+        l_sol is numpy array of size |E| such that l[i, j] represents the total
+        amount of traffic that flows through edge (i, j) under the given flow.
 
-        m_cong is the maximum congestion optimal value.
+        m_cong is the maximal congestion for any link weighted by cost. ie
+        max_{(i, j) in E} cost[i, j] * l[i, j] / cap[i, j]
     '''
     m = gb.Model('netflow')
 
@@ -143,6 +131,6 @@ def min_congestion(V, E, c, D, w=None, hard_cap=True, verbose=False):
 
 
 if __name__ == '__main__':
-    V, E, c, D = get_example()
+    G, D = softmin_routing.create_exampled()
     print('Linear programming for multi-commodity flow optimization.')
-    f, l, u = min_congestion(V, E, c, D, hard_cap=True, verbose=True)
+    f, l, m = min_congestion(G, D, hard_cap=True, verbose=True)

@@ -77,6 +77,10 @@ def split_ratio(G, s, u, t, gamma, sps):
 
 
 def get_shortest_paths(G):
+    '''TODO: This needs to be made differentiable for PyTorch's automatic
+    gradient. The way to do this is to replace shortest_path_length with
+    a computation of the shortest path, and to compute the shortest path length
+    manually by adding the edge weights along the shortest path.'''
     nV = G.number_of_nodes()
     sps = np.full((nV, nV), fill_value=np.inf)
 
@@ -101,19 +105,19 @@ def softmin_routing(G, D, gamma=2, hard_cap=False, verbose=False):
         Edges may additionally have a 'cost' attribute used for weighting the
         maximum link utilization.
 
-        D is a V x V demand matrix, represented as a 2D numpy array. V here
-        denotes the number of vertices in the graph.
+        D is a |V| x |V| demand matrix, represented as a 2D numpy array. |V|
+        here denotes the number of vertices in the graph G.
 
-        gamma is a parameter for the softmin function (exponential scaling).
-        The larger the value for gamma, the closer the method is to shortest
-        path routing.
+        gamma is floating point number used as a parameter for the softmin
+        function (exponential scaling). The larger the value for gamma, the
+        closer the method is to shortest path routing.
 
-        hard_cap determines whether edge capacities are treated as hard or soft
-        constraints.
+        hard_cap is a boolean flag which determines whether edge capacities are
+        treated as hard or soft optimization constraints.
 
         verbose is a boolean flag enabling/disabling optimizer printing.
 
-    return vals:
+    return values:
         f_sol is a routing policy, represented as a numpy array of size
         |V| x |V| x |E| such that f_sol[s, t, i, j] yields the amount of traffic
         from source s to destination t that goes through edge (i, j).
