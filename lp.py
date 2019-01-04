@@ -41,8 +41,8 @@ def min_congestion(G, D, hard_cap=False, verbose=False):
         l_sol is numpy array of size |E| such that l[i, j] represents the total
         amount of traffic that flows through edge (i, j) under the given flow.
 
-        m_cong is the maximal congestion for any link weighted by cost. ie
-        max_{(i, j) in E} cost[i, j] * l[i, j] / cap[i, j]
+        m_cong is the maximal congestion for any link weighted by cost.
+        ie max_{(i, j) in E} cost[i, j] * l[i, j] / cap[i, j].
     '''
     nV = G.number_of_nodes()
     nE = G.number_of_edges()

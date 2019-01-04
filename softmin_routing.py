@@ -129,8 +129,8 @@ def softmin_routing(G, D, gamma=2, hard_cap=False, verbose=False):
         amount of traffic destined for node j that ever arrives at node i, which
         includes the inital demand from i to j.
 
-        m_cong is the maximal congestion for any link weighted by cost. ie
-        max_{(i, j) in E} cost[i, j] * l[i, j] / cap[i, j]
+         m_cong is the maximal congestion for any link weighted by cost.
+        ie max_{(i, j) in E} cost[i, j] * l[i, j] / cap[i, j].
     '''
     nV = G.number_of_nodes()
     nE = G.number_of_edges()
