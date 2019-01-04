@@ -12,15 +12,25 @@ import lp
 def create_example():
     G = nx.DiGraph()
     G.add_nodes_from([0, 1, 2])
-    G.add_weighted_edges_from([(0, 1, 2), (1, 2, 4), (0, 2, 7)])
+    G.add_edges_from([(0, 1), (1, 2), (0, 2)])
+
+    G[0][1]['weight'] = 2
+    G[1][2]['weight'] = 4
+    G[0][2]['weight'] = 7
+
+    G[0][1]['capacity'] = 5
+    G[1][2]['capacity'] = 5
+    G[0][2]['capacity'] = 10
+
+    G[0][1]['cost'] = 1
+    G[1][2]['cost'] = 1
+    G[0][2]['cost'] = 1
 
     D = np.array([[0,2,7],
                   [0,0,3],
                   [0,0,0]])
 
-    c = np.array([5, 5, 10])
-
-    return G, D, c
+    return G, D
 
 
 def draw_graph(G):
@@ -78,26 +88,49 @@ def get_shortest_paths(G):
     return sps
 
 
-def softmin_routing(G, D, c, w=None, gamma=2, verbose=False):
+def softmin_routing(G, D, gamma=2, hard_cap=False, verbose=False):
     '''
     Return a routing policy given a directed graph with weighted edges and a
     deman matrix.
-    args:
-        G is a networkx graph with nodes and edges with weights.
+    input parameters:
+        G is a networkx graph with nodes and edges. Edges must have both a
+        'capacity' attribute and a 'weight' attribute. Edge capacity denotes the
+        maximum possible traffic utilization for an edge. It can be set as a
+        hard or soft optimization constraint through the 'hard_cap' parameter.
+        The edge 'weight' attribute is used for determining shortest paths.
+        Edges may additionally have a 'cost' attribute used for weighting the
+        maximum link utilization.
 
-        D is a V x V demand matrix, represented as a 2D numpy array.
+        D is a V x V demand matrix, represented as a 2D numpy array. V here
+        denotes the number of vertices in the graph.
 
         gamma is a parameter for the softmin function (exponential scaling).
         The larger the value for gamma, the closer the method is to shortest
         path routing.
 
+        hard_cap determines whether edge capacities are treated as hard or soft
+        constraints.
+
+        verbose is a boolean flag enabling/disabling optimizer printing.
+
     return vals:
-        F is the V x V x E routing policy that yields for each
-        source-destination pair, the amount of traffic that flows through edge
-        e.
+        f_sol is a routing policy, represented as a numpy array of size
+        |V| x |V| x |E| such that f_sol[s, t, i, j] yields the amount of traffic
+        from source s to destination t that goes through edge (i, j).
+
+        l_sol is numpy array of size |E| such that l[i, j] represents the total
+        amount of traffic that flows through edge (i, j) under the given flow.
+
+        g_sol is a numpy array of size |V| x |V| such that g(i, j) is the total
+        amount of traffic destined for node j that ever arrives at node i, which
+        includes the inital demand from i to j.
+
+        m_cong is the maximal congestion for any link weighted by cost. ie
+        max_{(i, j) in E} cost[i, j] * l[i, j] / cap[i, j]
     '''
     nV = G.number_of_nodes()
     nE = G.number_of_edges()
+
     sps = get_shortest_paths(G)
 
     m = gb.Model('netflow')
@@ -111,31 +144,33 @@ def softmin_routing(G, D, c, w=None, gamma=2, verbose=False):
 
     V = np.array([i for i in G.nodes()])
 
-    if not w:
-        # If weights aren't specified, make uniform
-        verboseprint('Using uniform link costs.')
-        w = np.ones(G.number_of_edges())
-
-    cap, cost = {}, {}
+    cost = {}
     for k, e in enumerate(G.edges()):
-        cap[e]  =  c[k]
-        cost[e] =  w[k]
+        if 'cost' in G[e[0]][e[1]]:
+            cost[e] = G[e[0]][e[1]]['cost']
+        else:
+            # If costs aren't specified, make uniform.
+            cost[e] = 1.0
+
+    cap = {}
+    for k, e in enumerate(G.edges()):
+        cap[e]  =  G[e[0]][e[1]]['capacity']
 
     arcs, capacity = gb.multidict(cap)
 
-    # Create variables
+    # Create variables.
     f = m.addVars(V, V, arcs, lb=0.0, name='flow')
     g = m.addVars(V, V, lb=0.0, name='traf_at_node')
     l = m.addVars(arcs, lb=0.0, name='tot_traf_across_link')
 
-    # Link utilization is sum of flows
+    # Link utilization is sum of flows.
     m.addConstrs(
             (l[i, j] == f.sum('*', '*', i, j) for i, j in arcs),
             'l_sum_traf',
             )
 
     # Total commodity at node is sum of incoming commodities times split
-    # ratios plus the source demand
+    # ratios plus the source demand.
     for s, t in lp.cartesian_product(V, V):
         qs = gb.quicksum(
                 g[u, t]*split_ratio(G, u, v, t, gamma, sps)
@@ -146,11 +181,11 @@ def softmin_routing(G, D, c, w=None, gamma=2, verbose=False):
             'split_ratio_{}_{}'.format(s, t)
         )
 
-    # Total commodity is sum of incoming flows plus outgoing source
+    # Total commodity is sum of incoming flows plus outgoing source.
     for s, t in lp.cartesian_product(V, V):
         m.addConstr(g[s, t] == (f.sum('*', t, '*', s) + D[s, t]))
 
-    # Flow conservation constraints
+    # Flow conservation constraints.
     for s, t, u in lp.cartesian_product(V, V, V):
         d = D[int(s), int(t)]
         if u==s:
@@ -160,14 +195,14 @@ def softmin_routing(G, D, c, w=None, gamma=2, verbose=False):
         else:
             m.addConstr(f.sum(s, t, u, '*')-f.sum(s, t, '*', u)==0, 'conserv')
 
-    # Compute max-link utilization (congestion)
+    # Compute max-link utilization (congestion).
     max_cong = m.addVar(name='congestion')
     m.addConstrs(((cost[i,j]*l[i, j])/capacity[i,j]<=max_cong for i, j in arcs))
 
-    # Compute optimal solution
+    # Compute optimal solution.
     m.optimize()
 
-    # Print solution
+    # Print solution.
     if m.status == gb.GRB.Status.OPTIMAL:
         l_sol = m.getAttr('x', l)
         g_sol = m.getAttr('x', g)
@@ -205,16 +240,19 @@ def softmin_routing(G, D, c, w=None, gamma=2, verbose=False):
             if p > 0:
                 verboseprint('l({}, {}): {} bytes.'.format(i, j, p))
 
-        verboseprint('\nMax. weighted link util: ', format(m_cong, '.4f'))
+        verboseprint('\nMaximum weighted link utilization (or congestion):',
+                     format(m_cong, '.4f')
+                     )
 
     else:
         verboseprint('\nERROR: Flow Optimization Failed!', file=sys.stderr)
-        return None, None, None
+        return None, None, None, None
 
-    return f_sol, l_sol, m_cong
+    return f_sol, l_sol, g_sol, m_cong
 
 
 if __name__ == '__main__':
-    G, D, c = create_example()
-    softmin_routing(G, D, c, gamma=2, verbose=True)
+    GAMMA = 2
+    G, D = create_example()
+    softmin_routing(G, D, GAMMA, verbose=True)
 
