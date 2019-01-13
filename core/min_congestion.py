@@ -1,3 +1,5 @@
+from __future__ import print_function
+
 import numpy as np
 import gurobipy as gb
 
@@ -39,7 +41,7 @@ def min_congestion(G, D, hard_cap=False, verbose=False):
 
     m = gb.Model('netflow')
 
-    verboseprint = 0 #print
+    verboseprint = print
 
     if not verbose:
         verboseprint = lambda *a: None

@@ -30,11 +30,11 @@ parser.add_argument('--learning-rate', type=float, default=3e-4, metavar='G',
                     help='learning rate (default: 3e-4)')
 parser.add_argument('--clip-epsilon', type=float, default=0.2, metavar='N',
                     help='clipping epsilon for PPO')
-parser.add_argument('--num-threads', type=int, default=4, metavar='N',
+parser.add_argument('--num-threads', type=int, default=100, metavar='N',
                     help='number of threads for agent (default: 4)')
 parser.add_argument('--seed', type=int, default=1, metavar='N',
                     help='random seed (default: 1)')
-parser.add_argument('--min-batch-size', type=int, default=2048, metavar='N',
+parser.add_argument('--min-batch-size', type=int, default=3000, metavar='N',
                     help='minimal batch size per PPO update (default: 2048)')
 parser.add_argument('--max-iter-num', type=int, default=500, metavar='N',
                     help='maximal number of main iterations (default: 500)')
@@ -64,7 +64,7 @@ if torch.cuda.is_available():
 
 data_generator=DMDataset(cyc_len=args.cyc_len,seq_len=args.seq_len, 
     dm_size=args.dm_size, dataset_size=(args.cyc_len-args.seq_len), 
-    gen_rule=args.gen_rule, p=args.p, train=True, seq_num=7)
+    gen_rule=args.gen_rule, p=args.p, train=True, seq_num=2)
 """environment"""
 env = RouteEnv(data_generator,args.seq_len, args.dm_size,args.edge_num) 
 state_dim = env.state_size

@@ -60,7 +60,7 @@ class DMDataset(data.Dataset):
     def gen_seq(self,seq_len):
         A = np.random.RandomState(seed=100+self.train).rand(self.seq_num,1,self.size,1)
         Rf = np.random.RandomState(seed=102+self.train).rand(self.seq_num,1,self.size, self.size)
-        x = A * Rf
+        x = A * Rf * np.broadcast_to(1 - np.eye(self.size), (1,1,self.size,self.size))
         self.x_cyc = np.tile(x,(1,seq_len,1,1)).reshape(self.seq_num,seq_len,-1)
         for i_seq in range(self.seq_num):
             for i_x in range(seq_len):

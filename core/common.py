@@ -58,10 +58,11 @@ class RouteEnv(object):
         for k, e in enumerate(G.edges()):
             G[e[0]][e[1]]['weight'] = action[k]
             #G[e[0]][e[1]]['capacity'] = action_max*10
-        #_,_,_, m_cong = softmin_routing(G, D, gamma=self.gamma)
-        #_,_,opt = min_congestion(G, D)
-        #reward=m_cong/opt
-        reward=0
+        #pause()
+        _,_,_, m_cong = softmin_routing(G, D, gamma=self.gamma)
+        _,_,opt = min_congestion(G, D)
+        reward=-m_cong/opt
+        #reward=0
         self.state, self.last_target, self.idx = self.dataset.__getitem__(idx)
         done = 1 if idx == (self.seq_len-1) else 0
         return self.state.reshape(-1), reward, done, {}

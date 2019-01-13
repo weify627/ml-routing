@@ -18,23 +18,32 @@ def create_example():
     input to the optimization functions looks like.'''
     G = nx.DiGraph()
     G.add_nodes_from([0, 1, 2])
-    G.add_edges_from([(0, 1), (1, 2), (0, 2)])
+    G.add_edges_from([(0, 1), (0, 2), (1, 0), (1, 2), (2, 0), (2, 1)])
 
-    G[0][1]['weight'] = 2
-    G[1][2]['weight'] = 4
-    G[0][2]['weight'] = 7
+    G[0][1]['weight'] = 1
+    G[0][2]['weight'] = 1
+    G[1][0]['weight'] = 1
+    G[1][2]['weight'] = 1
+    G[2][0]['weight'] = 1
+    G[2][1]['weight'] = 1
 
-    G[0][1]['capacity'] = 5
-    G[1][2]['capacity'] = 5
-    G[0][2]['capacity'] = 10
+    G[0][1]['capacity'] = 100
+    G[0][2]['capacity'] = 100
+    G[1][0]['capacity'] = 100
+    G[1][2]['capacity'] = 100
+    G[2][0]['capacity'] = 100
+    G[2][1]['capacity'] = 100
 
     G[0][1]['cost'] = 1
-    G[1][2]['cost'] = 1
     G[0][2]['cost'] = 1
+    G[1][0]['cost'] = 1
+    G[1][2]['cost'] = 1
+    G[2][0]['cost'] = 1
+    G[2][1]['cost'] = 1
 
-    D = np.array([[0,2,7],
-                  [0,0,3],
-                  [0,0,0]])
+    D = np.array([[0, 1, 1],
+                  [1, 0, 1],
+                  [1, 1, 0]])
 
     return G, D
 
@@ -91,6 +100,9 @@ def split_ratio(G, s, u, t, gamma, sps):
         is destined for t that will go through s's immediate neighbor u as
         prescribed by softmin routing with parameter gamma.
     '''
+    if s == t:
+        return 0.
+
     # sp3 is the shortest path from a to c that goes through a's immediate
     # neighbor b
     sp3 = lambda a, b, c: G[a][b]['weight'] + sps[b][c]

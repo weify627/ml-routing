@@ -1,5 +1,6 @@
 from __future__ import print_function
 import numpy as np
+import sys
 import gurobipy as gb
 from  pdb import set_trace as pause
 import utils
@@ -211,9 +212,9 @@ def softmin_routing(G, D, gamma=2, hard_cap=False, verbose=False):
                      )
 
     else:
-        print(D) 
-        for k, e in enumerate(G.edges()):
-            print(e, G[e[0]][e[1]]['capacity'], G[e[0]][e[1]]['weight'])
+        #print(D) 
+        #for k, e in enumerate(G.edges()):
+        #    print(e, G[e[0]][e[1]]['capacity'], G[e[0]][e[1]]['weight'])
         #pause()
         verboseprint('\nERROR: Flow Optimization Failed!', file=sys.stderr)
         return None, None, None, None
@@ -224,7 +225,7 @@ def softmin_routing(G, D, gamma=2, hard_cap=False, verbose=False):
 if __name__ == '__main__':
     GAMMA = 2
     #G, D = utils.create_example()
-    G, D = create_graph(3,6) 
+    G, D = create_graph(12,32) 
     print(D) 
     softmin_routing(G, D, GAMMA, verbose=True)
 
