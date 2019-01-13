@@ -1,7 +1,48 @@
+from __future__ import print_function
 import numpy as np
 import gurobipy as gb
 from  pdb import set_trace as pause
 import utils
+import networkx as nx
+import sys
+
+def create_graph(nV=12, nE=32):
+    G = nx.DiGraph()
+    G.add_nodes_from(range(nV))
+    setE = []
+    np.random.seed(1)
+    if 0:
+        for i in range(nV):
+            for j in range(i+1,nV):
+                setE +=[(i,j)]
+        idx = np.random.RandomState(seed=1).choice(len(setE),32,replace=False)
+        setE = [setE[i] for i in idx]
+    else:
+        for i in range(nV):
+            while len(setE)%2==0:
+                a=(i,np.random.choice(nV,1)[0])
+                if (not a in setE) and a[0]!=a[1]:
+                    setE +=[a]
+            while len(setE)%2!=0:
+                a=(np.random.choice(nV,1)[0],i)
+                if (not a in setE) and a[0]!=a[1]:
+                    setE +=[a]
+        while len(setE)!=nE:
+            a=(np.random.choice(nV,1)[0],np.random.choice(nV,1)[0])
+            if (not a in setE) and a[0]!=a[1]:
+                    setE +=[a]        
+    #idx = np.random.RandomState(seed=8).choice(len(setE),32,replace=False)
+    #setE = [setE[i] for i in idx]
+    print(setE)
+    G.add_edges_from(setE)
+
+    for e in setE:
+        G[e[0]][e[1]]['capacity'] = 100
+        G[e[0]][e[1]]['cost'] = 1
+        G[e[0]][e[1]]['weight'] = 1
+    a=np.ones((nV,nV))
+    #return G, (a-np.eye(nV)).T
+    return G, (a-np.triu(a)).T
 
 
 def softmin_routing(G, D, gamma=2, hard_cap=False, verbose=False):
@@ -51,7 +92,7 @@ def softmin_routing(G, D, gamma=2, hard_cap=False, verbose=False):
 
     m = gb.Model('netflow')
 
-    verboseprint = 0 #print
+    verboseprint = print
 
     if not verbose:
         verboseprint = lambda *a: None
@@ -73,7 +114,7 @@ def softmin_routing(G, D, gamma=2, hard_cap=False, verbose=False):
         cap[e]  =  G[e[0]][e[1]]['capacity']
 
     arcs, capacity = gb.multidict(cap)
-
+    #pause()
     # Create variables.
     f = m.addVars(V, V, arcs, lb=0.0, name='flow')
     g = m.addVars(V, V, lb=0.0, name='traf_at_node')
@@ -100,6 +141,7 @@ def softmin_routing(G, D, gamma=2, hard_cap=False, verbose=False):
                 g[u, t] * utils.split_ratio(G, u, v, t, gamma, sps)
                 for (u, v) in G.in_edges(s)
         )
+        #pause()
         m.addConstr(
             g[s, t] == qs + D[s, t],
             'split_ratio_{}_{}'.format(s, t)
@@ -172,7 +214,7 @@ def softmin_routing(G, D, gamma=2, hard_cap=False, verbose=False):
         print(D) 
         for k, e in enumerate(G.edges()):
             print(e, G[e[0]][e[1]]['capacity'], G[e[0]][e[1]]['weight'])
-        pause()
+        #pause()
         verboseprint('\nERROR: Flow Optimization Failed!', file=sys.stderr)
         return None, None, None, None
 
@@ -181,6 +223,8 @@ def softmin_routing(G, D, gamma=2, hard_cap=False, verbose=False):
 
 if __name__ == '__main__':
     GAMMA = 2
-    G, D = utils.create_example()
+    #G, D = utils.create_example()
+    G, D = create_graph(3,6) 
+    print(D) 
     softmin_routing(G, D, GAMMA, verbose=True)
 

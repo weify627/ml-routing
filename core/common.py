@@ -8,6 +8,7 @@ def create_graph(nV=12, nE=32):
     G = nx.DiGraph()
     G.add_nodes_from(range(nV))
     setE = []
+    np.random.seed(1)
     for i in range(nV):
         while len(setE)%2==0:
             a=(i,np.random.choice(nV,1)[0])
@@ -52,16 +53,17 @@ class RouteEnv(object):
         assert idx==(self.idx+1)
         G = nx.DiGraph(self.G)
         D = self.last_target.reshape(self.dm_size, self.dm_size)
-        action = action - action.min()
+        action = action - action.min()+0.2
         action_max = action.max()
         for k, e in enumerate(G.edges()):
             G[e[0]][e[1]]['weight'] = action[k]
             #G[e[0]][e[1]]['capacity'] = action_max*10
-        _,_,_, m_cong = softmin_routing(G, D, gamma=self.gamma)
-        _,_,opt = min_congestion(G, D)
+        #_,_,_, m_cong = softmin_routing(G, D, gamma=self.gamma)
+        #_,_,opt = min_congestion(G, D)
+        #reward=m_cong/opt
+        reward=0
         self.state, self.last_target, self.idx = self.dataset.__getitem__(idx)
         done = 1 if idx == (self.seq_len-1) else 0
-        reward=m_cong/opt
         return self.state.reshape(-1), reward, done, {}
 
     def reset(self):

@@ -5,10 +5,8 @@ import pickle
 import time
 
 #sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '.')))
-#from utils import *
+from logger import *
 from core.models import *
-#from models.mlp_policy_disc import DiscretePolicy
-from core.ppo import ppo_step
 from core.common import * #estimate_advantages
 from core.agent import Agent
 from dataset import *
@@ -36,7 +34,7 @@ parser.add_argument('--num-threads', type=int, default=4, metavar='N',
                     help='number of threads for agent (default: 4)')
 parser.add_argument('--seed', type=int, default=1, metavar='N',
                     help='random seed (default: 1)')
-parser.add_argument('--min-batch-size', type=int, default=4, metavar='N',
+parser.add_argument('--min-batch-size', type=int, default=2048, metavar='N',
                     help='minimal batch size per PPO update (default: 2048)')
 parser.add_argument('--max-iter-num', type=int, default=500, metavar='N',
                     help='maximal number of main iterations (default: 500)')
@@ -98,6 +96,31 @@ optim_batch_size = 64
 
 agent = Agent(env, policy_net, device, running_state=running_state, render=args.render, num_threads=args.num_threads)
 
+def ppo_step(policy_net, value_net, optimizer_policy, optimizer_value, optim_value_iternum, states, actions,
+             returns, advantages, fixed_log_probs, clip_epsilon, l2_reg):
+
+    """update critic"""
+    for _ in range(optim_value_iternum):
+        values_pred = value_net(states)
+        value_loss = (values_pred - returns).pow(2).mean()
+        # weight decay
+        for param in value_net.parameters():
+            value_loss += param.pow(2).sum() * l2_reg
+        optimizer_value.zero_grad()
+        value_loss.backward()
+        optimizer_value.step()
+
+    """update policy"""
+    log_probs = policy_net.get_log_prob(states, actions)
+    ratio = torch.exp(log_probs - fixed_log_probs)
+    surr1 = ratio * advantages
+    surr2 = torch.clamp(ratio, 1.0 - clip_epsilon, 1.0 + clip_epsilon) * advantages
+    policy_surr = -torch.min(surr1, surr2).mean()
+    optimizer_policy.zero_grad()
+    policy_surr.backward()
+    torch.nn.utils.clip_grad_norm_(policy_net.parameters(), 40)
+    optimizer_policy.step()
+
 def update_params(batch, i_iter):
     states = torch.from_numpy(np.stack(batch.state)).to(dtype).to(device)
     actions = torch.from_numpy(np.stack(batch.action)).to(dtype).to(device)
@@ -140,6 +163,7 @@ def main_loop():
         if i_iter % args.log_interval == 0:
             print('{}\tT_sample {:.4f}\tT_update {:.4f}\tR_min {:.2f}\tR_max {:.2f}\tR_avg {:.2f}'.format(
                 i_iter, log['sample_time'], t1-t0, log['min_reward'], log['max_reward'], log['avg_reward']))
+            writer.scalar_summary('avg_reward',log['avg_reward'], i_iter)
 
         if args.save_model_interval > 0 and (i_iter+1) % args.save_model_interval == 0:
             to_device(torch.device('cpu'), policy_net, value_net)
@@ -149,6 +173,11 @@ def main_loop():
 
         """clean up gpu memory"""
         torch.cuda.empty_cache()
+
+logdir = "log/rl/"+str(time.time())
+if not os.path.exists(logdir):
+    os.makedirs(logdir)
+writer = Logger(logdir)
 
 
 main_loop()
