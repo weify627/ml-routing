@@ -40,7 +40,7 @@ parser.add_argument('--max-iter-num', type=int, default=500, metavar='N',
                     help='maximal number of main iterations (default: 500)')
 parser.add_argument('--log-interval', type=int, default=1, metavar='N',
                     help='interval between training status logs (default: 10)')
-parser.add_argument('--save-model-interval', type=int, default=0, metavar='N',
+parser.add_argument('--save-model-interval', type=int, default=5, metavar='N',
                     help="interval between saving model (default: 0, means don't save)")
 parser.add_argument('--gpu-index', type=int, default=0, metavar='N')
 ## data generation
@@ -168,13 +168,13 @@ def main_loop():
         if args.save_model_interval > 0 and (i_iter+1) % args.save_model_interval == 0:
             to_device(torch.device('cpu'), policy_net, value_net)
             pickle.dump((policy_net, value_net, running_state),
-                        open(os.path.join(assets_dir(), 'learned_models/{}_ppo.p'.format(args.env_name)), 'wb'))
+                        open('learned_models/ppo/{}.p'.format(i_iter), 'wb'))
             to_device(device, policy_net, value_net)
 
         """clean up gpu memory"""
         torch.cuda.empty_cache()
 
-logdir = "log/rl/"+str(time.time())
+logdir = "tensorboard/rl/"+str(time.time())
 if not os.path.exists(logdir):
     os.makedirs(logdir)
 writer = Logger(logdir)

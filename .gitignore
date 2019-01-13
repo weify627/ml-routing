@@ -4,3 +4,4 @@ __pycache__/
 *log
 *.swo
 _*
+learned_models

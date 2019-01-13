@@ -8,23 +8,35 @@ def create_graph(nV=12, nE=32):
     G = nx.DiGraph()
     G.add_nodes_from(range(nV))
     setE = []
-    np.random.seed(1)
-    for i in range(nV):
-        while len(setE)%2==0:
-            a=(i,np.random.choice(nV,1)[0])
-            if not a in setE:
-                setE +=[a]
-        while len(setE)%2!=0:
-            a=(np.random.choice(nV,1)[0],i)
-            if not a in setE:
-                setE +=[a]
-    while len(setE)!=nE:
-        a=(np.random.choice(nV,1)[0],np.random.choice(nV,1)[0])
-        if not a in setE:
-                setE +=[a]        
-    #idx = np.random.RandomState(seed=8).choice(len(setE),32,replace=False)
+    #np.random.seed(1)
+    #for i in range(nV):
+    #    while len(setE)%2==0:
+    #        a=(i,np.random.choice(nV,1)[0])
+    #        if not a in setE:
+    #            setE +=[a]
+    #    while len(setE)%2!=0:
+    #        a=(np.random.choice(nV,1)[0],i)
+    #        if not a in setE:
+    #            setE +=[a]
+    #while len(setE)!=nE:
+    #    a=(np.random.choice(nV,1)[0],np.random.choice(nV,1)[0])
+    #    if not a in setE:
+    #            setE +=[a]        
+    ##idx = np.random.RandomState(seed=8).choice(len(setE),32,replace=False)
+    setE = [(0,1),(0,3),(0,5),(0,6),\
+            (1,7),(1,8),\
+            (2,7),(2,9),(2,11),\
+            (3,0),(3,10),\
+            (4,1),(4,6),\
+            (5,2),(5,6),\
+            (6,2),(6,5),\
+            (7,3),(7,4),(7,5),(7,6),(7,10),\
+            (8,4),\
+            (9,1),(9,5),(9,8),(9,10),(9,11),\
+            (10,4),\
+            (11,0),(11,7),(11,8)]
     #setE = [setE[i] for i in idx]
-    print(setE)
+    #print(setE)
     G.add_edges_from(setE)
 
     for e in setE:
@@ -62,7 +74,6 @@ class RouteEnv(object):
         _,_,_, m_cong = softmin_routing(G, D, gamma=self.gamma)
         _,_,opt = min_congestion(G, D)
         reward=-m_cong/opt
-        #reward=0
         self.state, self.last_target, self.idx = self.dataset.__getitem__(idx)
         done = 1 if idx == (self.seq_len-1) else 0
         return self.state.reshape(-1), reward, done, {}
@@ -70,6 +81,7 @@ class RouteEnv(object):
     def reset(self):
         seq_id = np.random.choice(self.seq_num,1)[0]
         self.state, self.last_target, self.idx = self.dataset.__getitem__(0)
+        self.G = create_graph(nV=self.dm_size)
         return np.array(self.state).reshape(-1)
 
 
