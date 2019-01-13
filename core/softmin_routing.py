@@ -1,13 +1,13 @@
 import numpy as np
 import gurobipy as gb
-
+from  pdb import set_trace as pause
 import utils
 
 
 def softmin_routing(G, D, gamma=2, hard_cap=False, verbose=False):
     '''
     Return a routing policy given a directed graph with weighted edges and a
-    deman matrix.
+    demand matrix.
     input parameters:
         G is a networkx graph with nodes and edges. Edges must have both a
         'capacity' attribute and a 'weight' attribute. Edge capacity denotes the
@@ -51,7 +51,7 @@ def softmin_routing(G, D, gamma=2, hard_cap=False, verbose=False):
 
     m = gb.Model('netflow')
 
-    verboseprint = print
+    verboseprint = 0 #print
 
     if not verbose:
         verboseprint = lambda *a: None
@@ -169,6 +169,10 @@ def softmin_routing(G, D, gamma=2, hard_cap=False, verbose=False):
                      )
 
     else:
+        print(D) 
+        for k, e in enumerate(G.edges()):
+            print(e, G[e[0]][e[1]]['capacity'], G[e[0]][e[1]]['weight'])
+        pause()
         verboseprint('\nERROR: Flow Optimization Failed!', file=sys.stderr)
         return None, None, None, None
 
