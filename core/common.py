@@ -9,11 +9,21 @@ def create_graph(nV=12, nE=32):
     G.add_nodes_from(range(nV))
     setE = []
     for i in range(nV):
-        for j in range(nV):
-            setE +=[(i,j)]
-    idx = np.random.RandomState(seed=1).choice(len(setE),32,replace=False)
-    setE = [setE[i] for i in idx]
-    print idx, setE
+        while len(setE)%2==0:
+            a=(i,np.random.choice(nV,1)[0])
+            if not a in setE:
+                setE +=[a]
+        while len(setE)%2!=0:
+            a=(np.random.choice(nV,1)[0],i)
+            if not a in setE:
+                setE +=[a]
+    while len(setE)!=nE:
+        a=(np.random.choice(nV,1)[0],np.random.choice(nV,1)[0])
+        if not a in setE:
+                setE +=[a]        
+    #idx = np.random.RandomState(seed=8).choice(len(setE),32,replace=False)
+    #setE = [setE[i] for i in idx]
+    print(setE)
     G.add_edges_from(setE)
 
     for e in setE:
