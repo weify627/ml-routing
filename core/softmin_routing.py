@@ -1,3 +1,5 @@
+from __future__ import print_function
+
 import numpy as np
 import sys
 import gurobipy as gb
