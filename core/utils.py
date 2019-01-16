@@ -1,6 +1,58 @@
 from matplotlib import pyplot as plt
 import networkx as nx
 import numpy as np
+import torch
+from pdb import set_trace as pause
+
+#def create_graph(nV=12, nE=32):
+def create_graph(nV=5, nE=8):
+    G = nx.DiGraph()
+    G.add_nodes_from(range(nV))
+    setE = []
+    if 1:
+        np.random.seed(1)
+        for i in range(nV):
+            while len(setE)%2==0:
+                a=(i,np.random.choice(nV,1)[0])
+                if not a in setE and a[0]!=a[1]:
+                    setE +=[a]
+            while len(setE)%2!=0:
+                a=(np.random.choice(nV,1)[0],i)
+                if not a in setE and a[0]!=a[1]:
+                    setE +=[a]
+        while len(setE)<=nE:
+            a=(np.random.choice(nV,1)[0],np.random.choice(nV,1)[0])
+            if not a in setE and a[0]!=a[1]:
+                    setE +=[a]        
+    else:
+    #idx = np.random.RandomState(seed=8).choice(len(setE),32,replace=False)
+        setE = [(0,1),(0,3),(0,5),(0,6),\
+                (1,7),(1,8),\
+                (2,7),(2,9),(2,11),\
+                (3,0),(3,10),\
+                (4,1),(4,6),\
+                (5,2),(5,6),\
+                (6,2),(6,5),\
+                (7,3),(7,4),(7,5),(7,6),(7,10),\
+                (8,4),\
+                (9,1),(9,5),(9,8),(9,10),(9,11),\
+                (10,4),\
+                (11,0),(11,7),(11,8)]
+    #setE = [setE[i] for i in idx]
+    #print(setE)
+    G.add_edges_from(setE)
+
+    for e in setE:
+        G[e[0]][e[1]]['capacity'] = 10
+        G[e[0]][e[1]]['cost'] = 1
+        G[e[0]][e[1]]['weight'] = 1
+
+    return G
+
+bk_G = create_graph()
+#bk_G = create_graph(nV=12)
+bk_edge = [ e for _,e in enumerate(bk_G.edges())]
+
 
 
 def cartesian_product(*arrays):
@@ -135,4 +187,78 @@ def get_shortest_paths(G):
 
     return sps
 
+def sp3(a,b,c,w,sps): 
+    return w[bk_edge.index((a,b))] + sps[b][c]
+    return w[bk_edge.index((a,b))] + sps[b][c]
 
+def split_ratio_torch(G, w, s, u, t, gamma):
+    denom = torch.zeros_like(w[0])
+    if s == t:
+        return denom
+
+    # sp3 is the shortest path from a to c that goes through a's immediate
+    # neighbor b
+    #sp3 = lambda a, b, c: w[bk_edge.index((a,b))] + sps[b][c]
+    if nx.has_path(G, u,t):
+        sps = 0
+        p = nx.shortest_path(G,u,t,weight='weight')
+        for k in range(1,len(p)):
+            sps += w[bk_edge.index((p[k-1],p[k]))]
+    else:
+        sps = np.inf
+    #num = torch.exp(-gamma *(w[bk_edge.index((s,u))]+sps[u][t])) # sp3(s, u, t,w,sps))
+    num = torch.exp(-gamma *(w[bk_edge.index((s,u))]+sps)) # sp3(s, u, t,w,sps))
+    #num = torch.exp(-gamma *(a.detach()+b)) # (sut2)) # (w[bk_edge.index((s,u))]+)) # sp3(s, u, t,w,sps))
+    #num = torch.exp(-gamma * sp3(s, u, t))
+
+    for v in G.neighbors(s):
+        if nx.has_path(G, v, t):
+            sps = 0
+            p = nx.shortest_path(G,v,t,weight='weight')
+            for k in range(1,len(p)):
+                sps += w[bk_edge.index((p[k-1],p[k]))]
+        else:
+            sps = np.inf
+        #denom += torch.exp(-gamma * (w[bk_edge.index((s,v))]+sps[v][t])) 
+        denom += torch.exp(-gamma * (w[bk_edge.index((s,v))]+sps)) 
+        #denom += torch.exp(-gamma * (w[bk_edge.index((s,v))]+spss[v][t])) 
+        #denom += torch.exp(-gamma * sp3(s, v, t))
+    #pause()
+    # Prevent division by zero badness
+    if (denom.item() == 0):
+        return denom
+
+    return num / denom
+
+def get_shortest_paths_torch(G, w, dtype=torch.float64, device=torch.device('cuda')):
+    nV = G.number_of_nodes()
+    sps = torch.full((nV, nV), fill_value=np.inf,dtype=dtype, device=device)
+    for i in range(nV):
+        for j in range(nV):
+            if nx.has_path(G, i, j):
+                sps[i][j] = 0
+                p = nx.shortest_path(G,i,j,weight='weight')
+                for k in range(1,len(p)):
+                    sps[i][j] += w[bk_edge.index((p[k-1],p[k]))]
+
+    return sps
+
+def get_shortest_paths_torch_old(G, w, dtype=torch.float64, device=torch.device('cuda')):
+    '''TODO: This needs to be made differentiable for PyTorch's automatic
+    gradient. The way to do this is to replace shortest_path_length with
+    a computation of the shortest path, and to compute the shortest path length
+    manually by adding the edge weights along the shortest path.'''
+    nV = G.number_of_nodes()
+    #sps = torch.full((nV, nV), fill_value=np.inf,dtype=dtype, device=device)
+    sps = np.full((nV, nV), fill_value=np.inf) #,dtype=dtype, device=device)
+    path = dict(nx.all_pairs_shortest_path(G))
+    for i in range(nV):
+        for j in range(nV):
+            if nx.has_path(G, i, j):
+                sps[i][j] = 0
+                p = path[i][j]
+                for k in range(1,len(p)):
+                    sps[i][j] += G[p[k-1]][p[k]]['weight']
+                    #sps[i][j] += w[bk_edge.index((p[k-1],p[k]))]
+
+    return sps

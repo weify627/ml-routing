@@ -17,62 +17,105 @@ def normal_log_density(x, mean, log_std, std):
 
 
 class Value(nn.Module):
-    def __init__(self, in_channel, in_size, hidden_size=(128, 128), activation='tanh'):
+    def __init__(self, in_channel, in_size, hidden_size=(128, 128),\
+            activation='tanh', struct='conv'):
         super(Value,self).__init__()
-        if activation == 'tanh':
-            self.activation = torch.tanh
-        elif activation == 'relu':
-            self.activation = torch.relu
-        elif activation == 'sigmoid':
-            self.activation = torch.sigmoid
-        state_dim = in_channel * in_size * in_size #5*10*10
+        self.struct = struct
+        self.in_size = in_size
+        if struct == 'conv':
+            print("Using CNN for Value!")
+            self.net = nn.Sequential(nn.Conv2d(in_channel, 128,3, padding=1), nn.ReLU(),
+            nn.Conv2d(128,128,1), nn.ReLU(),
+            nn.Conv2d(128,128,3, padding=1), nn.ReLU(),
+            nn.Conv2d(128, 1, 1), nn.ReLU()
+            )
+            self.fc = nn.Linear(in_size*in_size, 1)
+        else:
+            print("Using FC for Value!")
+            if activation == 'tanh':
+                self.activation = torch.tanh
+            elif activation == 'relu':
+                self.activation = torch.relu
+            elif activation == 'sigmoid':
+                self.activation = torch.sigmoid
+            state_dim = in_channel * in_size * in_size #5*10*10
 
-        self.affine_layers = nn.ModuleList()
-        last_dim = state_dim
-        for nh in hidden_size:
-            self.affine_layers.append(nn.Linear(last_dim, nh))
-            last_dim = nh
+            self.affine_layers = nn.ModuleList()
+            last_dim = state_dim
+            for nh in hidden_size:
+                self.affine_layers.append(nn.Linear(last_dim, nh))
+                last_dim = nh
 
-        self.value_head = nn.Linear(last_dim, 1)
-        self.value_head.weight.data.mul_(0.1)
-        self.value_head.bias.data.mul_(0.0)
+            self.value_head = nn.Linear(last_dim, 1)
+            self.value_head.weight.data.mul_(0.1)
+            self.value_head.bias.data.mul_(0.0)
 
     def forward(self, x):
-        for affine in self.affine_layers:
-            x = self.activation(affine(x))
+        bs = x.size(0)
+        if self.struct == 'conv':
+            x = x.reshape(bs,-1,self.in_size,self.in_size)
+            x = self.net(x)
+            x = x.reshape(bs,-1)
+            value = self.fc(x)
+        else:
+            for affine in self.affine_layers:
+                x = self.activation(affine(x))
 
-        value = self.value_head(x)
+            value = self.value_head(x)
         return value
 
 class Policy(nn.Module):
-    def __init__(self,in_channel ,in_size, action_dim, hidden_size=(128, 128), activation='tanh', log_std=0):
+    def __init__(self,in_channel ,in_size, action_dim, hidden_size=(128, 128),\
+            activation='tanh', log_std=0, struct='conv', un=False):
         super(Policy, self).__init__()
-        self.is_disc_action = False
-        if activation == 'tanh':
-            self.activation = torch.tanh
-        elif activation == 'relu':
-            self.activation = torch.relu
-        elif activation == 'sigmoid':
-            self.activation = torch.sigmoid
+        self.struct = struct
+        self.in_size = in_size
+        self.un = un
+        if struct == 'conv':
+            print("Using CNN for Policy!")
+            self.net = nn.Sequential(nn.Conv2d(in_channel, 128,3, padding=1), nn.ReLU(),
+            nn.Conv2d(128,128,1), nn.ReLU(),
+            nn.Conv2d(128,128,3, padding=1), nn.ReLU(),
+            nn.Conv2d(128, 1, 1), nn.ReLU()
+            )
+            self.fc = nn.Linear(in_size*in_size, action_dim)
+        else:
+            print("Using FC for Policy!")
+            if activation == 'tanh':
+                self.activation = torch.tanh
+            elif activation == 'relu':
+                self.activation = torch.relu
+            elif activation == 'sigmoid':
+                self.activation = torch.sigmoid
 
-        self.affine_layers = nn.ModuleList()
-        state_dim = in_channel * in_size * in_size #5*10*10
-        last_dim = state_dim
-        for nh in hidden_size:
-            self.affine_layers.append(nn.Linear(last_dim, nh))
-            last_dim = nh
+            self.affine_layers = nn.ModuleList()
+            state_dim = in_channel * in_size * in_size #5*10*10
+            last_dim = state_dim
+            for nh in hidden_size:
+                self.affine_layers.append(nn.Linear(last_dim, nh))
+                last_dim = nh
 
-        self.action_mean = nn.Linear(last_dim, action_dim)
-        self.action_mean.weight.data.mul_(0.1)
-        self.action_mean.bias.data.mul_(0.0)
+            self.action_mean = nn.Linear(last_dim, action_dim)
+            self.action_mean.weight.data.mul_(0.1)
+            self.action_mean.bias.data.mul_(0.0)
 
         self.action_log_std = nn.Parameter(torch.ones(1, action_dim) * log_std)
+        self.act_last = torch.sigmoid
 
     def forward(self, x):
-        for affine in self.affine_layers:
-            x = self.activation(affine(x))
+        bs = x.size(0)
+        if self.struct == 'conv':
+            x = x.reshape(bs,-1,self.in_size,self.in_size)
+            x = self.net(x)
+            x = x.reshape(bs,-1)
+            action_mean = self.fc(x)
+        else:
+            for affine in self.affine_layers:
+                x = self.activation(affine(x))
 
-        action_mean = self.action_mean(x)
+                action_mean = self.action_mean(x)
+        if self.un:
+            return self.act_last(action_mean)
         action_log_std = self.action_log_std.expand_as(action_mean)
         action_std = torch.exp(action_log_std)
 
@@ -117,6 +160,7 @@ class Net(nn.Module):
         #self.conv1 = nn.Conv2d(1, 10, kernel_size=5)
         #self.conv2 = nn.Conv2d(10, 20, kernel_size=5)
         #self.conv2_drop = nn.Dropout2d()
+        self.in_size = in_size
         self.in_len = in_channel * in_size * in_size #5*10*10
         self.struct = struct
 #        self.fc1 = nn.Linear(self.in_len, 512)
@@ -137,10 +181,13 @@ class Net(nn.Module):
 
 
     def forward(self, x):
+        bs = x.size(0)
         #x = F.relu(F.max_pool2d(self.conv1(x), 2))
         #x = F.relu(F.max_pool2d(self.conv2_drop(self.conv2(x)), 2))
         if self.struct == 'fc':
-            x = x.view(-1, self.in_len)
+            x = x.reshape(-1, self.in_len)
+        elif self.struct == 'conv':
+            x = x.reshape(bs,-1, self.in_size, self.in_size)
         x = self.net(x)
 #        x = F.relu(self.fc1(x))
 #        x = F.relu(self.fc2(x))

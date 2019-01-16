@@ -1,8 +1,8 @@
 from __future__ import print_function
-
+import sys
 import numpy as np
 import gurobipy as gb
-
+import networkx as nx
 import utils
 
 
@@ -36,6 +36,7 @@ def min_congestion(G, D, hard_cap=False, verbose=False):
         m_cong is the maximal congestion for any link weighted by cost.
         ie max_{(i, j) in E} cost[i, j] * l[i, j] / cap[i, j].
     '''
+    np.fill_diagonal(D,0)
     nV = G.number_of_nodes()
     nE = G.number_of_edges()
 
@@ -133,13 +134,53 @@ def min_congestion(G, D, hard_cap=False, verbose=False):
         )
 
     else:
+        print(D, m.status)
+        np.savetxt("demand.txt",D)
+        w = np.zeros(nE)
+        cap = np.zeros(nE)
+        cost = np.zeros(nE)
+        e0= np.zeros(nE)
+        e1= np.zeros(nE)
+        for k, e in enumerate(G.edges()):
+            w[k] = G[e[0]][e[1]]['weight']
+            cap[k] = G[e[0]][e[1]]['capacity']
+            cost[k] = G[e[0]][e[1]]['cost']
+            e0[k] = e[0]
+            e1[k] = e[1]
+            print(e,G[e[0]][e[1]]['cost'],  G[e[0]][e[1]]['capacity'], G[e[0]][e[1]]['weight'])
+
+        np.savetxt("w.txt",w)
+        np.savetxt("capacity.txt",cap)
+        np.savetxt("cost.txt",cost)
+        np.savetxt("e0.txt",e0)
+        np.savetxt("e1.txt",e1)
         verboseprint('\nERROR: Flow Optimization Failed!', file=sys.stderr)
         return None, None, None
 
     return f_sol, l_sol, m_cong
 
-
+bug=1
 if __name__ == '__main__':
+    if bug:
+        D = np.loadtxt("./demand.txt")
+        w = np.loadtxt("./w.txt")
+        capacity = np.loadtxt("./capacity.txt")
+        cost = np.loadtxt("./cost.txt")
+        e0 = np.loadtxt("./e0.txt")
+        e1 = np.loadtxt("./e1.txt")
+        G = nx.DiGraph()
+        G.add_nodes_from(range(5))
+        E=[]
+        for i in range((e0).size):
+            E +=[(e0[i],e1[i])]
+        G.add_edges_from(E)
+        for i,e in enumerate(E):
+            G[e[0]][e[1]]['capacity']=capacity[i]
+            G[e[0]][e[1]]['weight']=w[i]
+            G[e[0]][e[1]]['cost']=cost[i]
+        GAMMA = 2
+        _,_,_ = min_congestion(G, D, verbose=True)
+        exit()
     G, D = utils.create_example()
     print('Linear programming for multi-commodity flow optimization.')
     f, l, m = min_congestion(G, D, hard_cap=True, verbose=True)

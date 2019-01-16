@@ -8,7 +8,7 @@ import numpy as np
 import sys
 import argparse
 import json
-
+from pdb import set_trace as pause
 
 class DMDataset(data.Dataset):
     def __init__(self, cyc_len=10,seq_len=10, dm_size=20, dataset_size=1000, 
@@ -23,20 +23,25 @@ class DMDataset(data.Dataset):
         self.seq_num = seq_num
 
         print("Is_train:", train, "gen_rule:", gen_rule)
+        if gen_rule=='constant':
+            return
         if "gravity" in gen_rule:
 #            A = np.random.RandomState(seed=100).rand(self.size,1)
 #            Rf = np.random.RandomState(seed=101).rand(self.size, self.size)
 #            self.x = A * Rf
 #            print(self.x)
             if "cycle" in gen_rule:
-                self.gen_seq(self.cyc_len)
-                self.x_cache = np.tile(self.x_cyc,(1,self.seq_len//self.cyc_len+2,1,1))
+                self.x_cyc = self.gen_seq(self.cyc_len)
+                self.x_cache = np.tile(self.x_cyc,(1,max(self.cyc_len*2,self.seq_len//self.cyc_len)+2,1,1))
+                #print(self.x_cache.shape,self.x_cyc.shape)
             elif "avg" in gen_rule:
                 self.gen_seq(self.cyc_len)
                 self.x_cache = np.zeros((self.seq_num,self.cyc_len+self.dataset_size, self.size, self.size))
                 self.x_cache[:,:self.cyc_len] = self.x_cyc
                 for i_seq in range(self.cyc_len, self.cyc_len+self.dataset_size):
                     self.x_cache[:,i_seq] = (self.x_cache[:,(i_seq - self.cyc_len):i_seq]).mean((1))
+                print('x_cache',self.x_cache.shape, 'x_cyc',self.x_cyc.shape, \
+                        'cyc_len',cyc_len, 'seq_len', seq_len)
             elif "random" in gen_rule:
                 self.x_cache = self.gen_seq(self.seq_len*2)
                 
@@ -68,9 +73,12 @@ class DMDataset(data.Dataset):
                         self.size**2,int(self.size**2*self.p),replace=False)
                 self.x_cyc[i_seq, i_x][mask] = 0 
         #self.x_cyc = self.x_cyc * mask
+        self.x_cyc = self.x_cyc.reshape(self.seq_num, seq_len, self.size, self.size)
         return self.x_cyc
 
     def __getitem__(self, index):
+        if self.gen_rule=='constant':
+            return np.ones((10,5,5))*0.1, np.ones((5,5))*0.1,index
         #x = np.zeros((self.seq_len, self.size, self.size))
         #print(self.x_cache[:,:5,:5])
         seq_idx = index % self.seq_num

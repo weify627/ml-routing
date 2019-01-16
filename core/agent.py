@@ -9,7 +9,7 @@ def to_device(device, *args):
 
 
 def collect_samples(pid, queue, env, policy, custom_reward,
-                    mean_action, render, running_state, min_batch_size, max_t=50):
+                    mean_action, render, running_state, min_batch_size, max_t=30):
     torch.randn(pid)
     log = dict()
     memory = Memory()

@@ -3,47 +3,49 @@ import numpy as np
 import sys
 import gurobipy as gb
 from  pdb import set_trace as pause
-import utils
+from utils import *
 import networkx as nx
-import sys
 
-def create_graph(nV=12, nE=32):
-    G = nx.DiGraph()
-    G.add_nodes_from(range(nV))
-    setE = []
-    np.random.seed(1)
-    if 0:
-        for i in range(nV):
-            for j in range(i+1,nV):
-                setE +=[(i,j)]
-        idx = np.random.RandomState(seed=1).choice(len(setE),32,replace=False)
-        setE = [setE[i] for i in idx]
-    else:
-        for i in range(nV):
-            while len(setE)%2==0:
-                a=(i,np.random.choice(nV,1)[0])
-                if (not a in setE) and a[0]!=a[1]:
-                    setE +=[a]
-            while len(setE)%2!=0:
-                a=(np.random.choice(nV,1)[0],i)
-                if (not a in setE) and a[0]!=a[1]:
-                    setE +=[a]
-        while len(setE)!=nE:
-            a=(np.random.choice(nV,1)[0],np.random.choice(nV,1)[0])
-            if (not a in setE) and a[0]!=a[1]:
-                    setE +=[a]        
-    #idx = np.random.RandomState(seed=8).choice(len(setE),32,replace=False)
-    #setE = [setE[i] for i in idx]
-    print(setE)
-    G.add_edges_from(setE)
+def softmin_routing_torch(G, w, D, gamma=2, hard_cap=False, verbose=False):
+    np.fill_diagonal(D,0)
+    _,_,g, m_cong = softmin_routing(G,D)
+    nV = G.number_of_nodes()
+    nE = G.number_of_edges()
+    #sps = get_shortest_paths_torch(G,w)
+    l = torch.zeros_like(w)
+    #split_torch = torch.zeros((nE,nV),dtype=torch.float64, device=torch.device('cuda'))
+    for i_e in range(nE):
+        s = bk_edge[i_e][0]
+        t = bk_edge[i_e][1]
+        for i_v in range(nV):
+            #split_torch[i_e,i_v] = split_ratio_torch(G,w,s,t,i_v,gamma,sps)
+            l[i_e] += g[s,i_v] * split_ratio_torch(G,w,s,t,i_v,gamma)
+        l[i_e] = l[i_e]/G[s][t]['capacity'] 
+    m_cong_t = l.max()
+    #print("m_cong",m_cong, m_cong_t)
+    #if abs(m_cong-m_cong_t.item())<0.001: print("m_cong test passed")
+    return m_cong_t
 
-    for e in setE:
-        G[e[0]][e[1]]['capacity'] = 10
-        G[e[0]][e[1]]['cost'] = 1
-        #G[e[0]][e[1]]['weight'] = 1
-    a=np.ones((nV,nV))
-    #return G, (a-np.eye(nV)).T
-    return G, (a-np.triu(a)).T
+def test_soft(G,w,D,gamma=2):
+    nV = G.number_of_nodes()
+    nE = G.number_of_edges()
+    sps = get_shortest_paths(G)
+    sps_t = get_shortest_paths_torch(G,w)
+    for i in range(nV):
+        for j in range(nV):
+            if sps[i,j]!=sps_t[i,j]: print("sps",sps[i,j],sps_t[i,j])
+            #assert sps[i,j]==sps_t[i,j]
+    print("sps test passed!")
+    for i_e in range(nE):
+        s = bk_edge[i_e][0]
+        t = bk_edge[i_e][1]
+        for i_v in range(nV):
+            split_t = split_ratio_torch(G,w,s,t,i_v,gamma,sps)
+            split = split_ratio(G,s,t,i_v,gamma,sps)
+            if abs(split_t.item()-split)>0.001: print(split_t,split, i_e,i_v)
+            #assert split_t.item()==split
+    print("split_ratio test passed!")
+
 
 
 def softmin_routing(G, D, gamma=2, hard_cap=False, verbose=False):
@@ -88,8 +90,9 @@ def softmin_routing(G, D, gamma=2, hard_cap=False, verbose=False):
     '''
     nV = G.number_of_nodes()
     nE = G.number_of_edges()
+    np.fill_diagonal(D,0)
 
-    sps = utils.get_shortest_paths(G)
+    sps = get_shortest_paths(G)
 
     m = gb.Model('netflow')
 
@@ -137,9 +140,9 @@ def softmin_routing(G, D, gamma=2, hard_cap=False, verbose=False):
 
     # Total commodity at node is sum of incoming commodities times split
     # ratios plus the source demand.
-    for s, t in utils.cartesian_product(V, V):
+    for s, t in cartesian_product(V, V):
         qs = gb.quicksum(
-                g[u, t] * utils.split_ratio(G, u, v, t, gamma, sps)
+                g[u, t] * split_ratio(G, u, v, t, gamma, sps)
                 for (u, v) in G.in_edges(s)
         )
         #pause()
@@ -149,11 +152,11 @@ def softmin_routing(G, D, gamma=2, hard_cap=False, verbose=False):
         )
 
     # Total commodity is sum of incoming flows plus outgoing source.
-    for s, t in utils.cartesian_product(V, V):
+    for s, t in cartesian_product(V, V):
         m.addConstr(g[s, t] == (f.sum('*', t, '*', s) + D[s, t]))
 
     # Flow conservation constraints.
-    for s, t, u in utils.cartesian_product(V, V, V):
+    for s, t, u in cartesian_product(V, V, V):
         d = D[int(s), int(t)]
         if u==s:
             m.addConstr(f.sum(s, t, u, '*')-f.sum(s, t, '*', u)==d, 'conserv')
@@ -179,7 +182,7 @@ def softmin_routing(G, D, gamma=2, hard_cap=False, verbose=False):
         verboseprint('f_{i -> j}(s, t) denotes amount of traffic from source'
                      ' s to destination t that goes through link (i, j) in E.')
 
-        for s, t in utils.cartesian_product(V, V):
+        for s, t in cartesian_product(V, V):
             for i,j in arcs:
                 p = f_sol[s, t, i, j]
                 if p > 0:
@@ -191,7 +194,7 @@ def softmin_routing(G, D, gamma=2, hard_cap=False, verbose=False):
                      ' node j that passes through node i.'
         )
 
-        for s, t in utils.cartesian_product(V, V):
+        for s, t in cartesian_product(V, V):
             p = g_sol[s, t]
             if p > 0:
                 verboseprint('g({}, {}): {} bytes.'.format(s, t, p))
@@ -211,20 +214,84 @@ def softmin_routing(G, D, gamma=2, hard_cap=False, verbose=False):
                      )
 
     else:
-        print(D) 
+        print(D, m.status)
+        np.savetxt("demand.txt",D)
+        w = np.zeros(nE)
+        cap = np.zeros(nE)
+        cost = np.zeros(nE)
+        e0= np.zeros(nE)
+        e1= np.zeros(nE)
         for k, e in enumerate(G.edges()):
-            print(e, G[e[0]][e[1]]['capacity'], G[e[0]][e[1]]['weight'])
-        #pause()
+            w[k] = G[e[0]][e[1]]['weight']
+            cap[k] = G[e[0]][e[1]]['capacity']
+            cost[k] = G[e[0]][e[1]]['cost']
+            e0[k] = e[0]
+            e1[k] = e[1]
+            print(e,G[e[0]][e[1]]['cost'],  G[e[0]][e[1]]['capacity'], G[e[0]][e[1]]['weight'])
+
+        np.savetxt("w.txt",w)
+        np.savetxt("capacity.txt",cap)
+        np.savetxt("cost.txt",cost)
+        np.savetxt("e0.txt",e0)
+        np.savetxt("e1.txt",e1)
+        pause()
         verboseprint('\nERROR: Flow Optimization Failed!', file=sys.stderr)
         return None, None, None, None
 
     return f_sol, l_sol, g_sol, m_cong
 
-
+bug=0
 if __name__ == '__main__':
+    if bug:
+        D = np.loadtxt("../demand.txt")
+        w = np.loadtxt("../w.txt")
+        capacity = np.loadtxt("../capacity.txt")
+        cost = np.loadtxt("../cost.txt")
+        E=[(0, 1),\
+        (0, 3) ,\
+        (0, 5) ,\
+        (0, 6) ,\
+        (1, 8) ,\
+        (1, 7) ,\
+        (2, 9) ,\
+        (2, 11),\
+        (2, 7) ,\
+        (3, 0) ,\
+        (3, 10),\
+        (4, 1) ,\
+        (4, 6) ,\
+        (5, 2) ,\
+        (5, 6) ,\
+        (6, 2) ,\
+        (6, 5) ,\
+        (7, 10),\
+        (7, 3) ,\
+        (7, 4) ,\
+        (7, 5) ,\
+        (7, 6) ,\
+        (8, 4) ,\
+        (9, 8) ,\
+        (9, 1) ,\
+        (9, 10),\
+        (9, 11),\
+        (9, 5) ,\
+        (10, 4),\
+        (11, 0),\
+        (11, 8),\
+        (11, 7)]
+        print(len(E))
+        G = nx.DiGraph()
+        G.add_nodes_from(range(12))
+        G.add_edges_from(E)
+        for i,e in enumerate(E):
+            G[e[0]][e[1]]['capacity']=capacity[i]
+            G[e[0]][e[1]]['weight']=w[i]
+            G[e[0]][e[1]]['cost']=cost[i]
     GAMMA = 2
-    #G, D = utils.create_example()
-    G, D = create_graph(12,32) 
+    #_,_,_,m_cong = softmin_routing(G, D, GAMMA, verbose=True)
+    #pause()
+    #G, D = create_example()
+    G = create_graph(12,32) 
     D =[  [0.        , 0.        , 0.        , 0.07467553, 0.        , 0.      , \
         0.        , 0.        , 0.        , 0.        , 0.        , 0.        ], \
        [0.63155325, 0.        , 0.07924647, 0.        , 0.08720418, 0.20944966,\
@@ -314,11 +381,77 @@ if __name__ == '__main__':
     4.0695646407, \
     4.0951146407, \
     2.5934139747)
+    D2 =[[0.        ,0.        ,0.        ,0.07467553,0.        ,0.\
+         ,0.        ,0.        ,0.        ,0.        ,0.        ,0.        ],\
+           [0.63155325,0.        ,0.07924647,0.        ,0.08720418,0.20944966\
+                ,0.59397937,0.51572447,0.        ,0.14958543,0.12576671,0.        ],\
+            [0.        ,0.        ,0.        ,0.56884487,0.        ,0.\
+                 ,0.        ,0.45998989,0.19482636,0.        ,0.54485782,0.5525511 ],\
+             [0.        ,0.        ,0.        ,0.        ,0.        ,0.\
+                  ,0.13893744,0.05061309,0.        ,0.        ,0.        ,0.15526118],\
+              [0.        ,0.        ,0.        ,0.        ,0.        ,0.01075095\
+                   ,0.03327349,0.05564292,0.06327051,0.02016232,0.00850357,0.0522263 ],\
+               [0.        ,0.10034432,0.        ,0.        ,0.10741478,0.\
+                    ,0.        ,0.17650218,0.21337215,0.        ,0.        ,0.        ],\
+                [0.4306906 ,0.        ,0.26318789,0.00297687,0.        ,0.45115066\
+                     ,0.        ,0.        ,0.39789767,0.34677174,0.        ,0.51125304],\
+                 [0.        ,0.11351631,0.        ,0.24665418,0.00171465,0.09079633\
+                      ,0.14393598,0.        ,0.        ,0.        ,0.        ,0.        ],\
+                  [0.        ,0.59590463,0.        ,0.        ,0.37576252,0.09494492\
+                       ,0.        ,0.        ,0.        ,0.        ,0.39461373,0.        ],\
+                   [0.02779211,0.        ,0.48004151,0.        ,0.1233151 ,0.\
+                        ,0.24210119,0.47589273,0.17315789,0.        ,0.22064177,0.        ],\
+                    [0.        ,0.00737324,0.04371237,0.02974595,0.00815677,0.\
+                         ,0.01025066,0.00258558,0.00070691,0.00364967,0.        ,0.02665508],\
+                     [0.        ,0.04201426,0.        ,0.01147684,0.        ,0.12298539\
+                          ,0.        ,0.08973908,0.09429252,0.        ,0.06337927,0.        ]]
+    #D = np.array(D)
+    G[0][ 1]['weight'] = 3.28800814913
+    G[0][ 3]['weight'] = 3.76661126446
+    G[0][ 5]['weight'] = 2.20087756067
+    G[0][ 6]['weight'] = 5.85463444651
+    G[1][ 8]['weight'] = 2.39048023933
+    G[1][ 7]['weight'] = 5.86071104109
+    G[2][ 9]['weight'] = 4.08071583167
+    G[2][ 11]['weight'] = 4.6359445035
+    G[2][ 7]['weight'] = 2.29757704213
+    G[3][ 0]['weight'] = 4.82395352231
+    G[3][ 10]['weight'] = 5.02364727537
+    G[4][ 1]['weight'] = 3.24236538452
+    G[4][ 6]['weight'] = 4.24308228027
+    G[5][ 2]['weight'] = 4.00159475375
+    G[5][ 6]['weight'] = 6.03039194205
+    G[6][ 2]['weight'] = 4.36332869334
+    G[6][ 5]['weight'] = 5.48024709335
+    G[7][ 10]['weight'] = 4.02345098485
+    G[7][ 3]['weight'] = 2.90215409206
+    G[7][ 4]['weight'] = 3.26726909324
+    G[7][ 5]['weight'] = 4.30541960772
+    G[7][ 6]['weight'] = 3.9939494995
+    G[8][ 4]['weight'] = 0.506047611233
+    G[9][ 8]['weight'] = 4.38215269704
+    G[9][ 1]['weight'] = 4.05885254022
+    G[9][ 10]['weight'] = 4.2463743546
+    G[9][ 11]['weight'] = 2.82527709364
+    G[9][ 5]['weight'] = 0.2
+    G[10][ 4]['weight'] = 4.83718017961
+    G[11][ 0]['weight'] = 3.97261233893
+    G[11][ 8]['weight'] = 4.2321296212
+    G[11][ 7]['weight'] = 4.30096320225
 
-    for k, e in enumerate(G.edges()):
-        G[e[0]][e[1]]['weight']=a[k]
-    print(D, D.shape) 
-    softmin_routing(G, D, GAMMA, verbose=True)
+    #for k, e in enumerate(G.edges()):
+    #    G[e[0]][e[1]]['weight']=a[k]
+    #print(D, D.shape) 
+    w = torch.zeros(32,dtype=torch.float64, device=torch.device('cuda'))
+    for i,e in enumerate(G.edges()):
+        if i!=bk_edge.index((e[0],e[1])):
+            print(i,e)
+        w[bk_edge.index((e[0],e[1]))] = G[e[0]][e[1]]['weight']
+    test_soft(G,w,D)
+    m_cong_t = softmin_routing_torch(G,w, D, GAMMA, verbose=True)
+    #_,_,_,m_cong = softmin_routing(G, D, GAMMA, verbose=True)
+    
+    pause()
     print(D) 
     for k, e in enumerate(G.edges()):
         print(e, G[e[0]][e[1]]['capacity'], G[e[0]][e[1]]['weight'])

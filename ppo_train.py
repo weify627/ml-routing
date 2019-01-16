@@ -30,7 +30,7 @@ parser.add_argument('--learning-rate', type=float, default=3e-4, metavar='G',
                     help='learning rate (default: 3e-4)')
 parser.add_argument('--clip-epsilon', type=float, default=0.2, metavar='N',
                     help='clipping epsilon for PPO')
-parser.add_argument('--num-threads', type=int, default=100, metavar='N',
+parser.add_argument('--num-threads', type=int, default=30, metavar='N',
                     help='number of threads for agent (default: 4)')
 parser.add_argument('--seed', type=int, default=1, metavar='N',
                     help='random seed (default: 1)')
@@ -40,7 +40,7 @@ parser.add_argument('--max-iter-num', type=int, default=500, metavar='N',
                     help='maximal number of main iterations (default: 500)')
 parser.add_argument('--log-interval', type=int, default=1, metavar='N',
                     help='interval between training status logs (default: 10)')
-parser.add_argument('--save-model-interval', type=int, default=5, metavar='N',
+parser.add_argument('--save-model-interval', type=int, default=1, metavar='N',
                     help="interval between saving model (default: 0, means don't save)")
 parser.add_argument('--gpu-index', type=int, default=0, metavar='N')
 ## data generation
@@ -54,6 +54,9 @@ parser.add_argument('--gen-rule', type=str, default="gravity-random", metavar='L
 parser.add_argument('--p', type=float, default=0.5, metavar='LR')
 ## RL
 parser.add_argument('--edge-num', type=int, default=32, metavar='N')
+## network structure
+#parser.add_argument('--struct', type=str, default="fc", metavar='LR')
+parser.add_argument('--struct', type=str, default="conv", metavar='LR')
 args = parser.parse_args()
 
 dtype = torch.float64
@@ -63,7 +66,7 @@ if torch.cuda.is_available():
     torch.cuda.set_device(args.gpu_index)
 
 data_generator=DMDataset(cyc_len=args.cyc_len,seq_len=args.seq_len, 
-    dm_size=args.dm_size, dataset_size=(args.cyc_len-args.seq_len), 
+    dm_size=args.dm_size, dataset_size=50, #(args.cyc_len-args.seq_len), 
     gen_rule=args.gen_rule, p=args.p, train=True, seq_num=2)
 """environment"""
 env = RouteEnv(data_generator,args.seq_len, args.dm_size,args.edge_num) 
@@ -78,10 +81,12 @@ torch.manual_seed(args.seed)
 
 """define actor and critic"""
 if args.model_path is None:
-    policy_net = Policy(args.seq_len, args.dm_size, args.edge_num, log_std=args.log_std)
-    value_net = Value(args.seq_len, args.dm_size)
+    policy_net = Policy(args.seq_len, args.dm_size, args.edge_num,\
+            log_std=args.log_std, struct=args.struct)
+    value_net = Value(args.seq_len, args.dm_size, struct=args.struct)
 else:
     policy_net, value_net, running_state = pickle.load(open(args.model_path, "rb"))
+    print("{} loaded".format(args.model_path))
 policy_net.to(device)
 value_net.to(device)
 
@@ -161,22 +166,27 @@ def main_loop():
         t1 = time.time()
 
         if i_iter % args.log_interval == 0:
-            print('{}\tT_sample {:.4f}\tT_update {:.4f}\tR_min {:.2f}\tR_max {:.2f}\tR_avg {:.2f}'.format(
-                i_iter, log['sample_time'], t1-t0, log['min_reward'], log['max_reward'], log['avg_reward']))
+            print('{} T_sample {:.1f} T_update {:.1f} R_min {:.2f} R_max {:.2f}\tR_avg {:.2f} [{}-{}]'.format(
+                i_iter, log['sample_time'], t1-t0, log['min_reward'], log['max_reward'],\
+                        log['avg_reward'], args.gen_rule, args.struct))
             writer.scalar_summary('avg_reward',log['avg_reward'], i_iter)
+            #writer.scalar_summary('train/cong',log['cong'], i_iter)
 
         if args.save_model_interval > 0 and (i_iter+1) % args.save_model_interval == 0:
             to_device(torch.device('cpu'), policy_net, value_net)
             pickle.dump((policy_net, value_net, running_state),
-                        open('learned_models/ppo/{}.p'.format(i_iter), 'wb'))
+                        open('learned_models/ppo/{}-{}/{}.p'.format(args.gen_rule,args.struct,i_iter), 'wb'))
             to_device(device, policy_net, value_net)
 
         """clean up gpu memory"""
         torch.cuda.empty_cache()
 
-logdir = "tensorboard/rl/"+str(time.time())
+logdir = "tensorboard/rl/{}-{}-{}".format(args.gen_rule,args.struct,time.time())
+savedir = "learned_models/ppo/{}-{}".format(args.gen_rule,args.struct)
 if not os.path.exists(logdir):
     os.makedirs(logdir)
+if not os.path.exists(savedir):
+    os.makedirs(savedir)
 writer = Logger(logdir)
 
 
